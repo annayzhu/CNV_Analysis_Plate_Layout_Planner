@@ -132,6 +132,18 @@ export function buildReactionSets(input: Pick<PlanInput, "assayMode" | "targets"
   }));
 }
 
+export function findDuplicateReporters(
+  input: Pick<PlanInput, "assayMode" | "targets" | "reference">,
+) {
+  if (input.assayMode !== "multiplex") return new Set<string>();
+  const counts = new Map<string, number>();
+  for (const reporter of [...input.targets.map((target) => target.reporter), input.reference.reporter]) {
+    const key = reporter.trim().toLocaleUpperCase();
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return new Set([...counts].filter(([, count]) => count > 1).map(([reporter]) => reporter));
+}
+
 function createEmptyPlate(plateNumber: number, plateType: PlateType): PlannerPlate {
   const { rows, columns } = getPlateDimensions(plateType);
   const wells: PlannerWell[] = [];
@@ -250,10 +262,7 @@ function ensureValidInput(input: PlanInput) {
     throw new Error("Target assay 名称不可重复。 / Target assay names must be unique.");
   }
   if (input.assayMode === "multiplex") {
-    const reporters = [...input.targets.map((target) => target.reporter), input.reference.reporter]
-      .map((reporter) => reporter.trim().toLocaleLowerCase())
-      .filter(Boolean);
-    if (new Set(reporters).size !== reporters.length) {
+    if (findDuplicateReporters(input).size > 0) {
       throw new Error("Multiplex 同孔 reporter 必须可区分。 / Multiplex reporters must be distinct.");
     }
   }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   formatWellId,
+  findDuplicateReporters,
   planCnvLayout,
   validatePlan,
   type PlanInput,
@@ -97,4 +98,23 @@ test("multiplex rejects duplicate reporter channels", () => {
     () => planCnvLayout(baseInput({ reference: { name: "RNase P", assayId: "R", reporter: "FAM", volumeUl: 0.5 } })),
     /reporter/i,
   );
+});
+
+test("duplicate reporter detection is case-insensitive and only applies to multiplex wells", () => {
+  const multiplex = baseInput({
+    reference: { name: "RNase P", assayId: "", reporter: " fam ", volumeUl: 0.5 },
+  });
+  assert.deepEqual([...findDuplicateReporters(multiplex)], ["FAM"]);
+  assert.equal(findDuplicateReporters({ ...multiplex, assayMode: "duplex" }).size, 0);
+});
+
+test("assay IDs may be blank", () => {
+  const plan = planCnvLayout(baseInput({
+    targets: [
+      { id: "gstm1", name: "GSTM1", assayId: "", reporter: "FAM", volumeUl: 0.5 },
+      { id: "gstt1", name: "GSTT1", assayId: "", reporter: "CY5", volumeUl: 0.5 },
+    ],
+    reference: { name: "RNase P", assayId: "", reporter: "VIC", volumeUl: 0.5 },
+  }));
+  assert.equal(plan.occupiedWells, 16);
 });

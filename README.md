@@ -7,7 +7,9 @@
 - 96/384 孔板；复孔默认从左到右连续排列，不跨行。
 - 官方 duplex：每个 FAM target 分别与 VIC reference 同孔。
 - 自建 multiplex：多个 target 与 reference 同孔，检查 reporter 是否重复。
+- Assay ID 默认为空且允许留空；multiplex 同孔 Reporter 重复时实时标红并阻止生成。
 - Calibrator、NTC、0/1/2-copy QC 自动在每块板重复。
+- 默认加样方式显示为“八道排枪各行上样”；384 孔仍可切换 9 mm 八道隔行上样。
 - 默认 10.0 µL/孔反应体系，自动补水并按反应组计算 10% 配液余量。
 - Excel 导出包含板图、孔明细、反应体系、Assay/Reporter 配置，以及与 `PCR-96-new.xlsx`、`PCR-384.xlsx` 一致的 `Well + Sample` 仪器粘贴列表。
 - 页面结构与 qPCR 板布局工具保持一致，并支持中文 / English 一键切换。

@@ -22,6 +22,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   buildReactionSets,
+  findDuplicateReporters,
   formatWellId,
   getPlateDimensions,
   planCnvLayout,
@@ -54,6 +55,7 @@ import {
 
 const STORAGE_KEY = "taqman-cnv-plate-planner:v1";
 type Language = "zh" | "en";
+const LEGACY_PRESET_ASSAY_IDS = new Set(["Ho_33001161_cn", "Ho_33001153_cn", "Ho_00021109_cn"]);
 
 interface StoredState {
   version: 1;
@@ -90,14 +92,14 @@ const DEFAULT_TARGETS: TargetAssay[] = [
   {
     id: "target-gstm1",
     name: "GSTM1",
-    assayId: "Ho_33001161_cn",
+    assayId: "",
     reporter: "FAM",
     volumeUl: 0.5,
   },
   {
     id: "target-gstt1",
     name: "GSTT1",
-    assayId: "Ho_33001153_cn",
+    assayId: "",
     reporter: "CY5",
     volumeUl: 0.5,
   },
@@ -105,7 +107,7 @@ const DEFAULT_TARGETS: TargetAssay[] = [
 
 const DEFAULT_REFERENCE: ReferenceAssay = {
   name: "RNase P",
-  assayId: "Ho_00021109_cn",
+  assayId: "",
   reporter: "VIC",
   volumeUl: 0.5,
 };
@@ -182,6 +184,10 @@ export function CnvPlanner() {
     () => (plan ? calculateReactionRequirements(plan, reactionSystem) : null),
     [plan, reactionSystem],
   );
+  const duplicateReporters = useMemo(() => {
+    return findDuplicateReporters({ assayMode, targets, reference });
+  }, [assayMode, targets, reference]);
+  const reporterIsDuplicate = (reporter: string) => duplicateReporters.has(reporter.trim().toLocaleUpperCase());
 
   useEffect(() => {
     try {
@@ -193,8 +199,8 @@ export function CnvPlanner() {
       setPlateType(stored.plateType);
       setAssayMode(stored.assayMode);
       setSamples(stored.samples);
-      setTargets(stored.targets);
-      setReference(stored.reference);
+      setTargets(stored.targets.map((target) => LEGACY_PRESET_ASSAY_IDS.has(target.assayId) ? { ...target, assayId: "" } : target));
+      setReference(LEGACY_PRESET_ASSAY_IDS.has(stored.reference.assayId) ? { ...stored.reference, assayId: "" } : stored.reference);
       setReplicates(stored.replicates);
       setLayoutPreset(stored.layoutPreset);
       setLoadingPattern(stored.loadingPattern);
@@ -419,7 +425,7 @@ export function CnvPlanner() {
               <div className="field-row three">
                 <label><span>{tr("复孔", "Replicates")}</span><input type="number" min={1} max={8} value={replicates} onChange={(event) => { setReplicates(Number(event.target.value)); markDirty(); }} /></label>
                 <label><span>{tr("排序", "Layout")}</span><select value={layoutPreset} onChange={(event) => { setLayoutPreset(event.target.value as LayoutPreset); markDirty(); }}><option value="sample-major">{tr("按样本", "By sample")}</option><option value="assay-major">{tr("按反应组", "By reaction set")}</option></select></label>
-                <label><span>{tr("加样路径", "Loading path")}</span><select value={loadingPattern} disabled={plateType === 96} onChange={(event) => { setLoadingPattern(event.target.value as LoadingPattern); markDirty(); }}><option value="sequential">{tr("连续 A–P", "Sequential A–P")}</option><option value="interleaved-8-channel">{tr("9 mm 八道隔行", "9 mm interleaved 8-channel")}</option></select></label>
+                <label><span>{tr("加样方式", "Loading method")}</span><select value={loadingPattern} disabled={plateType === 96} onChange={(event) => { setLoadingPattern(event.target.value as LoadingPattern); markDirty(); }}><option value="sequential">{tr("八道排枪各行上样", "8-channel pipette by rows")}</option><option value="interleaved-8-channel">{tr("9 mm 八道隔行上样", "9 mm interleaved 8-channel")}</option></select></label>
               </div>
               {replicates < 4 && <p className="micro-warning">{tr("官方 CNV 指南建议 4 个复孔；当前设置适合作为方法开发条件，需谨慎判读。", "The official CNV guide recommends four replicates; use fewer replicates only for carefully reviewed method development.")}</p>}
             </section>
@@ -444,23 +450,23 @@ export function CnvPlanner() {
 
             <section className="card section-card">
               <div className="section-heading"><span>03</span><div><h3>{tr("Assay 与荧光", "Assays & reporters")}</h3><p>{tr("靶标、参照与染料", "Targets, reference & dyes")}</p></div></div>
-              <div className="assay-header"><span>Target</span><span>Assay ID</span><span>Reporter</span><span>µL</span><span /></div>
+              <div className="assay-header"><span>Target</span><span>Assay ID</span><span>Reporter</span><span className="unit-header">µL</span><span /></div>
               {targets.map((target, index) => (
                 <div className="assay-row" key={target.id}>
                   <input value={target.name} aria-label="Target name" onChange={(event) => updateTarget(index, { name: event.target.value })} />
-                  <input value={target.assayId} aria-label="Target assay ID" onChange={(event) => updateTarget(index, { assayId: event.target.value })} />
-                  <input value={target.reporter} aria-label="Target reporter" onChange={(event) => updateTarget(index, { reporter: event.target.value })} />
+                  <input value={target.assayId} placeholder={tr("可留空", "Optional")} aria-label="Target assay ID" onChange={(event) => updateTarget(index, { assayId: event.target.value })} />
+                  <input className={reporterIsDuplicate(target.reporter) ? "reporter-error" : ""} aria-invalid={reporterIsDuplicate(target.reporter)} value={target.reporter} aria-label="Target reporter" onChange={(event) => updateTarget(index, { reporter: event.target.value })} />
                   <input type="number" min={0} step={0.1} value={target.volumeUl} aria-label="Target volume" onChange={(event) => updateTarget(index, { volumeUl: Number(event.target.value) })} />
                   <button className="icon-button" disabled={targets.length === 1} aria-label="删除 target" onClick={() => { setTargets((current) => current.filter((_, targetIndex) => targetIndex !== index)); markDirty(); }}><Trash2 size={14} /></button>
                 </div>
               ))}
-              <button className="text-button" onClick={() => { setTargets((current) => [...current, { id: uid("target"), name: `Target ${current.length + 1}`, assayId: tr("待确认", "To confirm"), reporter: tr("待确认", "To confirm"), volumeUl: 0.5 }]); markDirty(); }}><Plus size={14} />{tr("添加 Target assay", "Add target assay")}</button>
+              <button className="text-button" onClick={() => { setTargets((current) => [...current, { id: uid("target"), name: `Target ${current.length + 1}`, assayId: "", reporter: "", volumeUl: 0.5 }]); markDirty(); }}><Plus size={14} />{tr("添加 Target assay", "Add target assay")}</button>
               <div className="reference-block">
                 <span className="reference-label">REFERENCE</span>
                 <div className="assay-row no-delete">
                   <input value={reference.name} aria-label="Reference name" onChange={(event) => { setReference((current) => ({ ...current, name: event.target.value })); markDirty(); }} />
-                  <input value={reference.assayId} aria-label="Reference assay ID" onChange={(event) => { setReference((current) => ({ ...current, assayId: event.target.value })); markDirty(); }} />
-                  <input value={reference.reporter} aria-label="Reference reporter" onChange={(event) => { setReference((current) => ({ ...current, reporter: event.target.value })); markDirty(); }} />
+                  <input value={reference.assayId} placeholder={tr("可留空", "Optional")} aria-label="Reference assay ID" onChange={(event) => { setReference((current) => ({ ...current, assayId: event.target.value })); markDirty(); }} />
+                  <input className={reporterIsDuplicate(reference.reporter) ? "reporter-error" : ""} aria-invalid={reporterIsDuplicate(reference.reporter)} value={reference.reporter} aria-label="Reference reporter" onChange={(event) => { setReference((current) => ({ ...current, reporter: event.target.value })); markDirty(); }} />
                   <input type="number" min={0} step={0.1} value={reference.volumeUl} aria-label="Reference volume" onChange={(event) => { setReference((current) => ({ ...current, volumeUl: Number(event.target.value) })); markDirty(); }} />
                   <span />
                 </div>
@@ -469,10 +475,11 @@ export function CnvPlanner() {
                 <span>{tr(`将生成 ${reactionSets.length} 个反应组`, `${reactionSets.length} reaction set(s) will be generated`)}</span>
                 {reactionSets.map((set) => <code key={set.id}>{set.name}</code>)}
               </div>
+              {duplicateReporters.size > 0 && <p className="reporter-error-note"><AlertTriangle size={14} />{tr("Multiplex 同孔 Reporter 不可重复。", "Reporter channels must be distinct within a multiplex well.")}</p>}
             </section>
 
             <section className="card section-card">
-              <div className="section-heading"><span>04</span><div><h3>{tr("10.0 µL 体系", "10.0 µL reaction setup")}</h3><p>{tr("反应体系与配液余量", "Reaction volumes & overage")}</p></div></div>
+              <div className="section-heading"><span>04</span><div><h3>{tr("反应体系与用量", "Reaction setup & volumes")}</h3><p>{tr("每孔体积与配液余量", "Per-well volumes & overage")}</p></div></div>
               <div className="field-row two">
                 <label><span>{tr("总体积", "Total volume")} (µL)</span><input type="number" step={0.5} value={reactionSystem.totalPerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, totalPerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
                 <label><span>2X Master Mix (µL)</span><input type="number" step={0.5} value={reactionSystem.masterMixPerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, masterMixPerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
@@ -482,25 +489,25 @@ export function CnvPlanner() {
               <p className="micro-note"><Info size={14} />{tr("水量按每个反应组自动补足；multiplex target 数或 assay 体积变化后会分别校验。", "Water is calculated per reaction set; multiplex target count and assay-volume changes are validated independently.")}</p>
             </section>
 
-            <button className="button button-primary generate-button" onClick={generatePlan}><Sparkles size={17} />{tr("生成 CNV 板布局", "Generate CNV layout")}</button>
+            <button className="button button-primary generate-button" disabled={duplicateReporters.size > 0} onClick={generatePlan}><Sparkles size={17} />{tr("生成 CNV 板布局", "Generate CNV layout")}</button>
           </aside>
 
           <main className="main-area result-column">
-            <section className="hero-strip" aria-labelledby="planner-title">
+            <section className={`hero-strip ${plan ? "" : "empty-preview"}`} aria-labelledby="planner-title">
               <div>
                 <p className="eyebrow"><ShieldCheck size={13} />{tr("板布局预览", "Layout preview")}</p>
-                <h1 className="hero-title" id="planner-title">{tr("CNV 板布局预览", "CNV plate layout preview")}</h1>
+                <h1 className="hero-title" id="planner-title">{plan ? tr(`已生成 ${plan.plates.length} 块 CNV 实验板`, `${plan.plates.length} CNV plate(s) generated`) : tr("请先完成左侧实验设置", "Complete the setup on the left")}</h1>
                 <p className="hero-copy">{tr(
                   "支持 96/384 孔、官方 duplex 与自建 multiplex、横向连续复孔、同板对照重复、10.0 µL 体系计算，以及可直接粘贴到 QuantStudio/SDS 的 Well + Sample 列表。",
                   "Supports 96/384-well plates, official duplex and custom multiplex assays, horizontally contiguous replicates, controls repeated on every plate, 10.0 µL reaction calculations, and Well + Sample lists ready to paste into QuantStudio/SDS.",
                 )}</p>
               </div>
-              <div className="summary-grid" aria-label={tr("布局摘要", "Layout summary")}>
+              {plan && <div className="summary-grid" aria-label={tr("布局摘要", "Layout summary")}>
                 <div className="metric"><span className="metric-label">{tr("预计孔板", "Plates")}</span><strong className="metric-value">{plan?.plates.length ?? "—"}</strong><span className="metric-detail">{plan ? `${plateType}-well` : tr("等待输入", "Waiting")}</span></div>
                 <div className="metric"><span className="metric-label">{tr("反应孔", "Reactions")}</span><strong className="metric-value">{plan?.occupiedWells ?? "—"}</strong><span className="metric-detail">{tr("含跨板重复", "Includes repeated controls")}</span></div>
                 <div className="metric"><span className="metric-label">{tr("利用率", "Utilization")}</span><strong className="metric-value">{plan ? `${Math.round(plan.occupiedWells / (plan.plates.length * plateType) * 100)}%` : "—"}</strong><span className="metric-detail">{plan ? `${plan.occupiedWells} / ${plan.plates.length * plateType}` : "—"}</span></div>
                 <div className="metric"><span className="metric-label">{tr("排布方式", "Layout")}</span><strong className="metric-value metric-text">{plan ? (layoutPreset === "sample-major" ? tr("按样本", "Sample") : tr("按反应组", "Reaction")) : "—"}</strong><span className="metric-detail">{plan ? tr("复孔横向连续", "Horizontal replicates") : tr("等待生成", "Waiting")}</span></div>
-              </div>
+              </div>}
             </section>
 
           <section className="result-content">
