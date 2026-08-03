@@ -272,7 +272,10 @@ function addReactionSheet(
 }
 
 async function makeWorkbook(plan: PlanResult, system: ReactionSystem, plates: PlannerPlate[]) {
-  const XLSX = await import("xlsx-js-style");
+  const imported = await import("xlsx-js-style");
+  // xlsx-js-style is CommonJS. Vite exposes its members directly while the
+  // Node test runtime exposes them under `default`; normalize both shapes.
+  const XLSX = (imported.default ?? imported) as unknown as XLSXModule;
   const workbook = XLSX.utils.book_new();
   addReadmeSheet(XLSX, workbook, plan);
   addSummarySheet(XLSX, workbook, { ...plan, plates }, system);
@@ -284,6 +287,20 @@ async function makeWorkbook(plan: PlanResult, system: ReactionSystem, plates: Pl
   addAssaySheet(XLSX, workbook, plan);
   addReactionSheet(XLSX, workbook, { ...plan, plates }, system);
   return { XLSX, workbook };
+}
+
+/**
+ * Build the exact workbook payload used by the browser download flow.
+ * Keeping this step document-independent lets automated tests verify the
+ * technician-facing sheet names and instrument copy/paste cells.
+ */
+export async function buildWorkbookData(
+  plan: PlanResult,
+  system: ReactionSystem,
+  plates: PlannerPlate[] = plan.plates,
+) {
+  const { XLSX, workbook } = await makeWorkbook(plan, system, plates);
+  return XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -298,8 +315,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export async function exportAllPlates(plan: PlanResult, system: ReactionSystem) {
-  const { XLSX, workbook } = await makeWorkbook(plan, system, plan.plates);
-  const data = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const data = await buildWorkbookData(plan, system, plan.plates);
   downloadBlob(
     new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     `TaqMan_CNV_All_Plates_${plan.input.plateType}well_${safeDateStamp()}.xlsx`,
@@ -311,8 +327,7 @@ export async function exportOnePlate(
   plate: PlannerPlate,
   system: ReactionSystem,
 ) {
-  const { XLSX, workbook } = await makeWorkbook(plan, system, [plate]);
-  const data = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const data = await buildWorkbookData(plan, system, [plate]);
   downloadBlob(
     new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     `TaqMan_CNV_Plate_${String(plate.plateNumber).padStart(2, "0")}_${safeName(plate.name)}_${plan.input.plateType}well_${safeDateStamp()}.xlsx`,
