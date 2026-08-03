@@ -10,6 +10,7 @@
 - Calibrator、NTC、0/1/2-copy QC 自动在每块板重复。
 - 默认 10.0 µL/孔反应体系，自动补水并按反应组计算 10% 配液余量。
 - Excel 导出包含板图、孔明细、反应体系、Assay/Reporter 配置，以及与 `PCR-96-new.xlsx`、`PCR-384.xlsx` 一致的 `Well + Sample` 仪器粘贴列表。
+- 页面结构与 qPCR 板布局工具保持一致，并支持中文 / English 一键切换。
 - 所有实验数据仅在当前浏览器本地处理；显式保存到 `localStorage`。
 
 ## 运行

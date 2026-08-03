@@ -9,6 +9,7 @@ import {
   FileSpreadsheet,
   FlaskConical,
   Info,
+  Languages,
   Layers3,
   Plus,
   RotateCcw,
@@ -52,9 +53,11 @@ import {
 } from "@/lib/exportWorkbook";
 
 const STORAGE_KEY = "taqman-cnv-plate-planner:v1";
+type Language = "zh" | "en";
 
 interface StoredState {
   version: 1;
+  language?: Language;
   plateType: PlateType;
   assayMode: AssayMode;
   samples: SampleInput[];
@@ -143,6 +146,7 @@ function copyText(text: string) {
 }
 
 export function CnvPlanner() {
+  const [language, setLanguage] = useState<Language>("zh");
   const [plateType, setPlateType] = useState<PlateType>(96);
   const [assayMode, setAssayMode] = useState<AssayMode>("multiplex");
   const [samples, setSamples] = useState<SampleInput[]>(clone(DEFAULT_SAMPLES));
@@ -162,6 +166,7 @@ export function CnvPlanner() {
   const [toast, setToast] = useState("");
   const [savedAt, setSavedAt] = useState("");
   const [isDirty, setIsDirty] = useState(false);
+  const tr = (zh: string, en: string) => (language === "zh" ? zh : en);
 
   const bulkNames = useMemo(() => parseNames(bulkText), [bulkText]);
   const reactionSets = useMemo(
@@ -184,6 +189,7 @@ export function CnvPlanner() {
       if (!raw) return;
       const stored = JSON.parse(raw) as StoredState;
       if (stored.version !== 1) return;
+      setLanguage(stored.language ?? "zh");
       setPlateType(stored.plateType);
       setAssayMode(stored.assayMode);
       setSamples(stored.samples);
@@ -199,6 +205,10 @@ export function CnvPlanner() {
       localStorage.removeItem(STORAGE_KEY);
     }
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+  }, [language]);
 
   useEffect(() => {
     if (plateType === 96 && loadingPattern === "interleaved-8-channel") {
@@ -228,7 +238,7 @@ export function CnvPlanner() {
     setSamples((current) => [...current, ...additions]);
     setBulkText("");
     markDirty();
-    setToast(`已导入 ${additions.length} 个样本名称。`);
+    setToast(tr(`已导入 ${additions.length} 个样本名称。`, `Imported ${additions.length} sample name(s).`));
   }
 
   function generatePlan() {
@@ -248,7 +258,7 @@ export function CnvPlanner() {
       setActivePlate(0);
       setSelectedWell(null);
       setIsDirty(true);
-      setToast(`已生成 ${nextPlan.plates.length} 块板，共 ${nextPlan.occupiedWells} 个反应孔。`);
+      setToast(tr(`已生成 ${nextPlan.plates.length} 块板，共 ${nextPlan.occupiedWells} 个反应孔。`, `Generated ${nextPlan.plates.length} plate(s) with ${nextPlan.occupiedWells} reaction wells.`));
     } catch (error) {
       setToast(error instanceof Error ? error.message : "排板失败，请检查输入。 / Planning failed.");
     }
@@ -257,6 +267,7 @@ export function CnvPlanner() {
   function saveState() {
     const stored: StoredState = {
       version: 1,
+      language,
       plateType,
       assayMode,
       samples,
@@ -272,11 +283,11 @@ export function CnvPlanner() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
     setSavedAt(stored.savedAt);
     setIsDirty(false);
-    setToast("已保存到本浏览器。 / Saved in this browser.");
+    setToast(tr("已保存到本浏览器。", "Saved in this browser."));
   }
 
   function resetTool() {
-    if (!window.confirm("确认清空本工具中保存的样本、assay 与板图？此操作不可撤销。")) return;
+    if (!window.confirm(tr("确认清空本工具中保存的样本、assay 与板图？此操作不可撤销。", "Clear all saved samples, assays, and plate layouts? This cannot be undone."))) return;
     localStorage.removeItem(STORAGE_KEY);
     setPlateType(96);
     setAssayMode("multiplex");
@@ -290,7 +301,7 @@ export function CnvPlanner() {
     setPlan(null);
     setSavedAt("");
     setIsDirty(false);
-    setToast("工具已重置。 / Reset complete.");
+    setToast(tr("工具已重置。", "Reset complete."));
   }
 
   function selectWell(wellId: string) {
@@ -326,7 +337,7 @@ export function CnvPlanner() {
       const sample = samples.find((candidate) => candidate.id === editorSampleId);
       const set = next.reactionSets.find((candidate) => candidate.id === editorReactionSetId);
       if (!sample || !set) {
-        setToast("请选择样本和反应组。 / Select a sample and reaction set.");
+        setToast(tr("请选择样本和反应组。", "Select a sample and reaction set."));
         return;
       }
       Object.assign(well, {
@@ -343,13 +354,13 @@ export function CnvPlanner() {
     }
     setPlan(refreshPlan(next));
     setIsDirty(true);
-    setToast(clear ? `${selectedWell} 已清空。` : `${selectedWell} 已手工更新；请查看质控提示。`);
+    setToast(clear ? tr(`${selectedWell} 已清空。`, `${selectedWell} cleared.`) : tr(`${selectedWell} 已手工更新；请查看质控提示。`, `${selectedWell} updated manually; review the QC messages.`));
   }
 
   async function handleCopy(includeHeader: boolean) {
     if (!plan) return;
     await copyText(instrumentTsv(plan, plan.plates[activePlate], includeHeader));
-    setToast(includeHeader ? "已复制 Well + Sample（含表头）。" : "已复制 Well + Sample（无表头）。");
+    setToast(includeHeader ? tr("已复制 Well + Sample（含表头）。", "Copied Well + Sample with headers.") : tr("已复制 Well + Sample（无表头）。", "Copied Well + Sample without headers."));
   }
 
   const plate = plan?.plates[activePlate] ?? null;
@@ -362,85 +373,77 @@ export function CnvPlanner() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <div className="brand-mark"><Layers3 size={21} /></div>
-          <div>
-            <h1>TaqMan CNV 板布局规划工具</h1>
-            <p>CNV Analysis Plate Planner · qPCR Lab Tools Series</p>
+          <div className="brand-mark"><Layers3 size={20} /></div>
+          <div className="brand-copy">
+            <p className="brand-title">{tr("CNV Analysis 板布局规划工具", "CNV Analysis Plate Layout Planner")}</p>
+            <p className="brand-subtitle">{tr("96 / 384 孔 · 排板与反应用量", "96 / 384 wells · Layout & reaction planning")}</p>
           </div>
         </div>
         <div className="topbar-actions">
+          <div className="language-switch" role="group" aria-label={tr("界面语言", "Interface language")}>
+            <Languages size={14} aria-hidden="true" />
+            <button type="button" className={language === "zh" ? "active" : ""} aria-pressed={language === "zh"} onClick={() => setLanguage("zh")}>中文</button>
+            <button type="button" className={language === "en" ? "active" : ""} aria-pressed={language === "en"} onClick={() => setLanguage("en")}>EN</button>
+          </div>
           <span className={`save-status ${isDirty ? "unsaved" : ""}`}>
-            {isDirty ? "有未保存更改" : savedAt ? `已保存 ${new Date(savedAt).toLocaleString("zh-CN")}` : "未保存"}
+            {isDirty ? tr("有未保存更改", "Unsaved changes") : savedAt ? tr(`已保存 ${new Date(savedAt).toLocaleString("zh-CN")}`, `Saved ${new Date(savedAt).toLocaleString("en")}`) : tr("本地就绪", "Ready")}
           </span>
-          <button className="button" onClick={saveState}><Save size={16} />保存</button>
-          <button className="button button-ghost" onClick={resetTool}><RotateCcw size={16} />重置工具</button>
+          <button className="button button-clear" onClick={resetTool}><RotateCcw size={16} />{tr("重置工具", "Reset tool")}</button>
+          <button className="button" onClick={saveState}><Save size={16} />{tr("保存", "Save")}</button>
+          <button className="button button-primary" disabled={!plan || reactionErrors.length > 0} onClick={() => plan && exportAllPlates(plan, reactionSystem)}><Download size={16} />{tr("全部导出", "Export all")}</button>
         </div>
       </header>
 
-      <main className="workspace">
-        <section className="hero-strip">
-          <div>
-            <span className="eyebrow"><Sparkles size={14} /> TECHNICIAN-FIRST · BROWSER-LOCAL</span>
-            <h2>从样本清单到可上机板图，一次完成。</h2>
-            <p>支持 96/384 孔、官方 duplex 与自建 multiplex、横向连续复孔、同板对照重复、10.0 µL 体系计算，以及可直接粘贴到 QuantStudio/SDS 的 Well + Sample 列表。</p>
-          </div>
-          <div className="hero-kpis">
-            <div><strong>{plan?.plates.length ?? 0}</strong><span>Plates</span></div>
-            <div><strong>{plan?.occupiedWells ?? 0}</strong><span>Wells</span></div>
-            <div><strong>{errorCount}</strong><span>Errors</span></div>
-          </div>
-        </section>
-
-        <div className="notice warning">
-          <AlertTriangle size={18} />
-          <div><strong>方法边界：</strong>标准 TaqMan Copy Number workflow 是 FAM target + VIC reference 的 duplex。当前 GSTM1-FAM / GSTT1-CY5 / RNase P-VIC 三色方案属于自建 multiplex，正式使用前需锁定 reporter/quencher、仪器光谱校准并与两个 duplex 完成桥接验证。</div>
-        </div>
-
-        <div className="layout-grid">
-          <aside className="control-column">
+      <div className="workspace">
+          <aside className="sidebar control-column" aria-label={tr("实验设置", "Experiment setup")}>
             <section className="card section-card">
-              <div className="section-heading"><span>01</span><div><h3>实验模式</h3><p>Plate & assay mode</p></div></div>
-              <div className="segmented two">
-                <button className={plateType === 96 ? "active" : ""} onClick={() => { setPlateType(96); markDirty(); }}>96-well</button>
-                <button className={plateType === 384 ? "active" : ""} onClick={() => { setPlateType(384); markDirty(); }}>384-well</button>
+              <div className="section-heading"><span>01</span><div><h3>{tr("选择孔板与模式", "Plate & assay mode")}</h3><p>{tr("选择本次上机板型", "Select the plate format")}</p></div></div>
+              <div className="plate-picker">
+                {([96, 384] as const).map((type) => {
+                  const size = getPlateDimensions(type);
+                  return <button key={type} className={`plate-choice ${plateType === type ? "selected" : ""}`} onClick={() => { setPlateType(type); markDirty(); }}>
+                    <span><span className="plate-choice-name">{tr(`${type} 孔板`, `${type}-well plate`)}</span><span className="plate-choice-meta">{tr(`${size.rows} 行 × ${size.columns} 列`, `${size.rows} rows × ${size.columns} columns`)}</span></span>
+                    <span className="plate-mini" aria-hidden="true">{Array.from({ length: 12 }).map((_, index) => <span key={index} />)}</span>
+                  </button>;
+                })}
               </div>
-              <label className="field-label">检测模式 / Detection mode</label>
+              <label className="field-label">{tr("检测模式", "Detection mode")}</label>
               <div className="mode-cards">
                 <button className={assayMode === "duplex" ? "mode-card active" : "mode-card"} onClick={() => { setAssayMode("duplex"); markDirty(); }}>
-                  <strong>Duplex</strong><span>每个 target 分别与 reference 同孔</span>
+                  <strong>Duplex</strong><span>{tr("每个 target 分别与 reference 同孔", "Each target shares a well with the reference")}</span>
                 </button>
                 <button className={assayMode === "multiplex" ? "mode-card active" : "mode-card"} onClick={() => { setAssayMode("multiplex"); markDirty(); }}>
-                  <strong>Multiplex</strong><span>多个 target + reference 同孔</span>
+                  <strong>Multiplex</strong><span>{tr("多个 target + reference 同孔", "Multiple targets and the reference share one well")}</span>
                 </button>
               </div>
               <div className="field-row three">
-                <label><span>复孔 / Replicates</span><input type="number" min={1} max={8} value={replicates} onChange={(event) => { setReplicates(Number(event.target.value)); markDirty(); }} /></label>
-                <label><span>排序 / Layout</span><select value={layoutPreset} onChange={(event) => { setLayoutPreset(event.target.value as LayoutPreset); markDirty(); }}><option value="sample-major">按样本</option><option value="assay-major">按反应组</option></select></label>
-                <label><span>加样路径</span><select value={loadingPattern} disabled={plateType === 96} onChange={(event) => { setLoadingPattern(event.target.value as LoadingPattern); markDirty(); }}><option value="sequential">连续 A–P</option><option value="interleaved-8-channel">9 mm 八道隔行</option></select></label>
+                <label><span>{tr("复孔", "Replicates")}</span><input type="number" min={1} max={8} value={replicates} onChange={(event) => { setReplicates(Number(event.target.value)); markDirty(); }} /></label>
+                <label><span>{tr("排序", "Layout")}</span><select value={layoutPreset} onChange={(event) => { setLayoutPreset(event.target.value as LayoutPreset); markDirty(); }}><option value="sample-major">{tr("按样本", "By sample")}</option><option value="assay-major">{tr("按反应组", "By reaction set")}</option></select></label>
+                <label><span>{tr("加样路径", "Loading path")}</span><select value={loadingPattern} disabled={plateType === 96} onChange={(event) => { setLoadingPattern(event.target.value as LoadingPattern); markDirty(); }}><option value="sequential">{tr("连续 A–P", "Sequential A–P")}</option><option value="interleaved-8-channel">{tr("9 mm 八道隔行", "9 mm interleaved 8-channel")}</option></select></label>
               </div>
-              {replicates < 4 && <p className="micro-warning">官方 CNV 指南建议 4 个复孔；当前设置适合作为方法开发条件，需谨慎判读。</p>}
+              {replicates < 4 && <p className="micro-warning">{tr("官方 CNV 指南建议 4 个复孔；当前设置适合作为方法开发条件，需谨慎判读。", "The official CNV guide recommends four replicates; use fewer replicates only for carefully reviewed method development.")}</p>}
             </section>
 
             <section className="card section-card">
-              <div className="section-heading"><span>02</span><div><h3>样本与对照</h3><p>Samples & controls</p></div></div>
-              <textarea className="bulk-input" value={bulkText} onChange={(event) => setBulkText(event.target.value)} placeholder="从 Excel 粘贴样本名称，每行一个…" />
-              <button className="button button-soft full" onClick={importSamples} disabled={bulkNames.length === 0}><Plus size={16} />导入 {bulkNames.length} 个样本名称</button>
+              <div className="section-heading"><span>02</span><div><h3>{tr("样本与对照", "Samples & controls")}</h3><p>{tr("逐个输入或从 Excel 粘贴", "Enter individually or paste from Excel")}</p></div></div>
+              <textarea className="bulk-input" value={bulkText} onChange={(event) => setBulkText(event.target.value)} placeholder={tr("从 Excel 粘贴样本名称，每行一个…", "Paste sample names from Excel, one per line…")} />
+              <button className="button button-soft full" onClick={importSamples} disabled={bulkNames.length === 0}><Plus size={16} />{tr(`导入 ${bulkNames.length} 个样本名称`, `Import ${bulkNames.length} sample name(s)`)}</button>
               <div className="editable-list sample-list">
                 {samples.map((sample, index) => (
                   <div className="editable-row" key={sample.id}>
-                    <input aria-label="样本名称" value={sample.name} onChange={(event) => updateSample(index, { name: event.target.value })} />
-                    <select aria-label="样本类型" value={sample.type} onChange={(event) => updateSample(index, { type: event.target.value as SampleType })}>
+                    <input aria-label={tr("样本名称", "Sample name")} value={sample.name} onChange={(event) => updateSample(index, { name: event.target.value })} />
+                    <select aria-label={tr("样本类型", "Sample type")} value={sample.type} onChange={(event) => updateSample(index, { type: event.target.value as SampleType })}>
                       {SAMPLE_TYPES.map((type) => <option key={type} value={type}>{sampleTypeLabel(type)}</option>)}
                     </select>
-                    <button className="icon-button" aria-label="删除样本" onClick={() => { setSamples((current) => current.filter((_, sampleIndex) => sampleIndex !== index)); markDirty(); }}><Trash2 size={15} /></button>
+                    <button className="icon-button" aria-label={tr("删除样本", "Delete sample")} onClick={() => { setSamples((current) => current.filter((_, sampleIndex) => sampleIndex !== index)); markDirty(); }}><Trash2 size={15} /></button>
                   </div>
                 ))}
               </div>
-              <button className="text-button" onClick={() => { setSamples((current) => [...current, { id: uid("sample"), name: `Unknown_${String(current.filter((sample) => sample.type === "unknown").length + 1).padStart(3, "0")}`, type: "unknown" }]); markDirty(); }}><Plus size={14} />添加一行</button>
+              <button className="text-button" onClick={() => { setSamples((current) => [...current, { id: uid("sample"), name: `Unknown_${String(current.filter((sample) => sample.type === "unknown").length + 1).padStart(3, "0")}`, type: "unknown" }]); markDirty(); }}><Plus size={14} />{tr("添加一行", "Add row")}</button>
             </section>
 
             <section className="card section-card">
-              <div className="section-heading"><span>03</span><div><h3>Assay 与荧光</h3><p>Targets, reference & dyes</p></div></div>
+              <div className="section-heading"><span>03</span><div><h3>{tr("Assay 与荧光", "Assays & reporters")}</h3><p>{tr("靶标、参照与染料", "Targets, reference & dyes")}</p></div></div>
               <div className="assay-header"><span>Target</span><span>Assay ID</span><span>Reporter</span><span>µL</span><span /></div>
               {targets.map((target, index) => (
                 <div className="assay-row" key={target.id}>
@@ -451,7 +454,7 @@ export function CnvPlanner() {
                   <button className="icon-button" disabled={targets.length === 1} aria-label="删除 target" onClick={() => { setTargets((current) => current.filter((_, targetIndex) => targetIndex !== index)); markDirty(); }}><Trash2 size={14} /></button>
                 </div>
               ))}
-              <button className="text-button" onClick={() => { setTargets((current) => [...current, { id: uid("target"), name: `Target ${current.length + 1}`, assayId: "待确认", reporter: "待确认", volumeUl: 0.5 }]); markDirty(); }}><Plus size={14} />添加 Target assay</button>
+              <button className="text-button" onClick={() => { setTargets((current) => [...current, { id: uid("target"), name: `Target ${current.length + 1}`, assayId: tr("待确认", "To confirm"), reporter: tr("待确认", "To confirm"), volumeUl: 0.5 }]); markDirty(); }}><Plus size={14} />{tr("添加 Target assay", "Add target assay")}</button>
               <div className="reference-block">
                 <span className="reference-label">REFERENCE</span>
                 <div className="assay-row no-delete">
@@ -463,32 +466,50 @@ export function CnvPlanner() {
                 </div>
               </div>
               <div className="reaction-set-preview">
-                <span>将生成 {reactionSets.length} 个反应组</span>
+                <span>{tr(`将生成 ${reactionSets.length} 个反应组`, `${reactionSets.length} reaction set(s) will be generated`)}</span>
                 {reactionSets.map((set) => <code key={set.id}>{set.name}</code>)}
               </div>
             </section>
 
             <section className="card section-card">
-              <div className="section-heading"><span>04</span><div><h3>10.0 µL 体系</h3><p>Reaction setup</p></div></div>
+              <div className="section-heading"><span>04</span><div><h3>{tr("10.0 µL 体系", "10.0 µL reaction setup")}</h3><p>{tr("反应体系与配液余量", "Reaction volumes & overage")}</p></div></div>
               <div className="field-row two">
-                <label><span>总体积 / Total (µL)</span><input type="number" step={0.5} value={reactionSystem.totalPerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, totalPerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
+                <label><span>{tr("总体积", "Total volume")} (µL)</span><input type="number" step={0.5} value={reactionSystem.totalPerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, totalPerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
                 <label><span>2X Master Mix (µL)</span><input type="number" step={0.5} value={reactionSystem.masterMixPerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, masterMixPerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
                 <label><span>gDNA / NTC water (µL)</span><input type="number" step={0.5} value={reactionSystem.templatePerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, templatePerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
-                <label><span>余量 / Overage (%)</span><input type="number" step={1} value={reactionSystem.overagePercent} onChange={(event) => { setReactionSystem((current) => ({ ...current, overagePercent: Number(event.target.value) })); markDirty(); }} /></label>
+                <label><span>{tr("余量", "Overage")} (%)</span><input type="number" step={1} value={reactionSystem.overagePercent} onChange={(event) => { setReactionSystem((current) => ({ ...current, overagePercent: Number(event.target.value) })); markDirty(); }} /></label>
               </div>
-              <p className="micro-note"><Info size={14} />水量按每个反应组自动补足；multiplex target 数或 assay 体积变化后会分别校验。</p>
+              <p className="micro-note"><Info size={14} />{tr("水量按每个反应组自动补足；multiplex target 数或 assay 体积变化后会分别校验。", "Water is calculated per reaction set; multiplex target count and assay-volume changes are validated independently.")}</p>
             </section>
 
-            <button className="button button-primary generate-button" onClick={generatePlan}><Sparkles size={17} />生成 CNV 板布局</button>
+            <button className="button button-primary generate-button" onClick={generatePlan}><Sparkles size={17} />{tr("生成 CNV 板布局", "Generate CNV layout")}</button>
           </aside>
 
-          <section className="result-column">
+          <main className="main-area result-column">
+            <section className="hero-strip" aria-labelledby="planner-title">
+              <div>
+                <p className="eyebrow"><ShieldCheck size={13} />{tr("板布局预览", "Layout preview")}</p>
+                <h1 className="hero-title" id="planner-title">{tr("CNV 板布局预览", "CNV plate layout preview")}</h1>
+                <p className="hero-copy">{tr(
+                  "支持 96/384 孔、官方 duplex 与自建 multiplex、横向连续复孔、同板对照重复、10.0 µL 体系计算，以及可直接粘贴到 QuantStudio/SDS 的 Well + Sample 列表。",
+                  "Supports 96/384-well plates, official duplex and custom multiplex assays, horizontally contiguous replicates, controls repeated on every plate, 10.0 µL reaction calculations, and Well + Sample lists ready to paste into QuantStudio/SDS.",
+                )}</p>
+              </div>
+              <div className="summary-grid" aria-label={tr("布局摘要", "Layout summary")}>
+                <div className="metric"><span className="metric-label">{tr("预计孔板", "Plates")}</span><strong className="metric-value">{plan?.plates.length ?? "—"}</strong><span className="metric-detail">{plan ? `${plateType}-well` : tr("等待输入", "Waiting")}</span></div>
+                <div className="metric"><span className="metric-label">{tr("反应孔", "Reactions")}</span><strong className="metric-value">{plan?.occupiedWells ?? "—"}</strong><span className="metric-detail">{tr("含跨板重复", "Includes repeated controls")}</span></div>
+                <div className="metric"><span className="metric-label">{tr("利用率", "Utilization")}</span><strong className="metric-value">{plan ? `${Math.round(plan.occupiedWells / (plan.plates.length * plateType) * 100)}%` : "—"}</strong><span className="metric-detail">{plan ? `${plan.occupiedWells} / ${plan.plates.length * plateType}` : "—"}</span></div>
+                <div className="metric"><span className="metric-label">{tr("排布方式", "Layout")}</span><strong className="metric-value metric-text">{plan ? (layoutPreset === "sample-major" ? tr("按样本", "Sample") : tr("按反应组", "Reaction")) : "—"}</strong><span className="metric-detail">{plan ? tr("复孔横向连续", "Horizontal replicates") : tr("等待生成", "Waiting")}</span></div>
+              </div>
+            </section>
+
+          <section className="result-content">
             {!plan || !plate ? (
               <div className="empty-state card">
                 <div className="empty-icon"><FlaskConical size={30} /></div>
-                <h3>板布局将在这里生成</h3>
-                <p>确认样本、assay、荧光通道和反应体系后，点击“生成 CNV 板布局”。</p>
-                <div className="empty-checks"><span><CheckCircle2 size={15} />对照每板重复</span><span><CheckCircle2 size={15} />复孔横向连续</span><span><CheckCircle2 size={15} />仪器粘贴表</span></div>
+                <h3>{tr("板布局将在这里生成", "Your plate layout will appear here")}</h3>
+                <p>{tr("确认样本、assay、荧光通道和反应体系后，点击“生成 CNV 板布局”。", "Confirm the samples, assays, reporter channels, and reaction setup, then select Generate CNV layout.")}</p>
+                <div className="empty-checks"><span><CheckCircle2 size={15} />{tr("对照每板重复", "Controls on every plate")}</span><span><CheckCircle2 size={15} />{tr("复孔横向连续", "Contiguous replicates")}</span><span><CheckCircle2 size={15} />{tr("仪器粘贴表", "Instrument paste list")}</span></div>
               </div>
             ) : (
               <>
@@ -499,10 +520,10 @@ export function CnvPlanner() {
                       <h3>{plate.name}</h3>
                     </div>
                     <div className="plate-actions">
-                      <button className="button" onClick={() => handleCopy(true)}><Clipboard size={15} />复制含表头</button>
-                      <button className="button" onClick={() => handleCopy(false)}><Clipboard size={15} />复制无表头</button>
-                      <button className="button" onClick={() => exportOnePlate(plan, plate, reactionSystem)}><FileSpreadsheet size={15} />本板 Excel</button>
-                      <button className="button button-primary" disabled={reactionErrors.length > 0} onClick={() => exportAllPlates(plan, reactionSystem)}><Download size={15} />导出全部</button>
+                      <button className="button" onClick={() => handleCopy(true)}><Clipboard size={15} />{tr("复制含表头", "Copy with headers")}</button>
+                      <button className="button" onClick={() => handleCopy(false)}><Clipboard size={15} />{tr("复制无表头", "Copy without headers")}</button>
+                      <button className="button" onClick={() => exportOnePlate(plan, plate, reactionSystem)}><FileSpreadsheet size={15} />{tr("本板 Excel", "Plate Excel")}</button>
+                      <button className="button button-primary" disabled={reactionErrors.length > 0} onClick={() => exportAllPlates(plan, reactionSystem)}><Download size={15} />{tr("导出全部", "Export all")}</button>
                     </div>
                   </div>
 
@@ -541,27 +562,27 @@ export function CnvPlanner() {
                   </div>
 
                   <div className="plate-legend">
-                    <span><i className="dot unknown" />Unknown</span><span><i className="dot calibrator" />Calibrator</span><span><i className="dot ntc" />NTC</span><span><i className="dot qc" />0/1/2-copy QC</span><span><i className="dot manual" />Manual</span>
+                    <span><i className="dot unknown" />Unknown</span><span><i className="dot calibrator" />Calibrator</span><span><i className="dot ntc" />NTC</span><span><i className="dot qc" />0/1/2-copy QC</span><span><i className="dot manual" />{tr("手工", "Manual")}</span>
                   </div>
                 </section>
 
                 {selected && (
                   <section className="card well-editor">
-                    <div className="editor-title"><div><span>手工编辑孔 / Manual edit</span><strong>{selected.id}</strong></div><button className="icon-button" onClick={() => setSelectedWell(null)}><X size={16} /></button></div>
+                    <div className="editor-title"><div><span>{tr("手工编辑孔", "Manual well edit")}</span><strong>{selected.id}</strong></div><button className="icon-button" aria-label={tr("关闭", "Close")} onClick={() => setSelectedWell(null)}><X size={16} /></button></div>
                     <div className="field-row three editor-fields">
-                      <label><span>样本</span><select value={editorSampleId} onChange={(event) => setEditorSampleId(event.target.value)}><option value="">请选择</option>{samples.map((sample) => <option key={sample.id} value={sample.id}>{sample.name} · {sampleTypeLabel(sample.type)}</option>)}</select></label>
-                      <label><span>反应组</span><select value={editorReactionSetId} onChange={(event) => setEditorReactionSetId(event.target.value)}>{plan.reactionSets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label>
-                      <label><span>复孔编号</span><input type="number" min={1} max={replicates} value={editorReplicate} onChange={(event) => setEditorReplicate(Number(event.target.value))} /></label>
+                      <label><span>{tr("样本", "Sample")}</span><select value={editorSampleId} onChange={(event) => setEditorSampleId(event.target.value)}><option value="">{tr("请选择", "Select")}</option>{samples.map((sample) => <option key={sample.id} value={sample.id}>{sample.name} · {sampleTypeLabel(sample.type)}</option>)}</select></label>
+                      <label><span>{tr("反应组", "Reaction set")}</span><select value={editorReactionSetId} onChange={(event) => setEditorReactionSetId(event.target.value)}>{plan.reactionSets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label>
+                      <label><span>{tr("复孔编号", "Replicate number")}</span><input type="number" min={1} max={replicates} value={editorReplicate} onChange={(event) => setEditorReplicate(Number(event.target.value))} /></label>
                     </div>
-                    <div className="editor-actions"><button className="button danger-outline" onClick={() => applyManualWell(true)}><Trash2 size={15} />清空此孔</button><button className="button button-primary" onClick={() => applyManualWell(false)}>应用并标记手工复核</button></div>
+                    <div className="editor-actions"><button className="button danger-outline" onClick={() => applyManualWell(true)}><Trash2 size={15} />{tr("清空此孔", "Clear well")}</button><button className="button button-primary" onClick={() => applyManualWell(false)}>{tr("应用并标记手工复核", "Apply and mark for manual review")}</button></div>
                   </section>
                 )}
 
                 <section className="card qa-card">
                   <div className="qa-summary">
-                    <div className={errorCount ? "qa-badge error" : "qa-badge success"}><ShieldCheck size={19} /><strong>{errorCount ? `${errorCount} 个错误` : "结构校验通过"}</strong></div>
-                    <div className="qa-badge warning"><AlertTriangle size={18} /><strong>{warningCount} 个提醒</strong></div>
-                    <span>排板规则、同板对照、复孔数与反应总体积</span>
+                    <div className={errorCount ? "qa-badge error" : "qa-badge success"}><ShieldCheck size={19} /><strong>{errorCount ? tr(`${errorCount} 个错误`, `${errorCount} error(s)`) : tr("结构校验通过", "Structural checks passed")}</strong></div>
+                    <div className="qa-badge warning"><AlertTriangle size={18} /><strong>{tr(`${warningCount} 个提醒`, `${warningCount} warning(s)`)}</strong></div>
+                    <span>{tr("排板规则、同板对照、复孔数与反应总体积", "Layout rules, plate-level controls, replicates, and total reaction volume")}</span>
                   </div>
                   {(issues.length > 0 || reactionErrors.length > 0) && <div className="issue-list">
                     {reactionErrors.map((message) => <div className="issue error" key={message}><AlertTriangle size={15} />{message}</div>)}
@@ -571,13 +592,13 @@ export function CnvPlanner() {
 
                 {requirements && (
                   <section className="card reaction-card">
-                    <div className="plate-toolbar"><div><span className="eyebrow">REACTION SETUP</span><h3>{reactionSystem.totalPerWellUl.toFixed(1)} µL 公共反应液与模板需求</h3></div><span className="pill"><Beaker size={14} />{reactionSystem.overagePercent}% overage</span></div>
+                    <div className="plate-toolbar"><div><span className="eyebrow">REACTION SETUP</span><h3>{tr(`${reactionSystem.totalPerWellUl.toFixed(1)} µL 公共反应液与模板需求`, `${reactionSystem.totalPerWellUl.toFixed(1)} µL master-mix and template requirements`)}</h3></div><span className="pill"><Beaker size={14} />{reactionSystem.overagePercent}% overage</span></div>
                     <div className="mix-groups">
                       {requirements.groups.map((group) => (
                         <article className="mix-group" key={group.reactionSet.id}>
-                          <div className="mix-title"><div><strong>{group.reactionSet.name}</strong><span>{group.wells} wells · prepare {group.preparationReactions} reactions</span></div><b>{group.mixDispensePerWellUl.toFixed(1)} µL/孔</b></div>
-                          <table><thead><tr><th>组分</th><th>每孔 µL</th><th>总量 µL</th></tr></thead><tbody>{group.components.map((component) => <tr key={component.name}><td>{component.name}</td><td>{component.perWellUl.toFixed(2)}</td><td>{component.totalUl.toFixed(2)}</td></tr>)}</tbody></table>
-                          <p>另加 gDNA 或 NTC water：{reactionSystem.templatePerWellUl.toFixed(1)} µL/孔</p>
+                          <div className="mix-title"><div><strong>{group.reactionSet.name}</strong><span>{tr(`${group.wells} 孔 · 配制 ${group.preparationReactions} 个反应`, `${group.wells} wells · prepare ${group.preparationReactions} reactions`)}</span></div><b>{group.mixDispensePerWellUl.toFixed(1)} µL/{tr("孔", "well")}</b></div>
+                          <table><thead><tr><th>{tr("组分", "Component")}</th><th>{tr("每孔", "Per well")} (µL)</th><th>{tr("总量", "Total")} (µL)</th></tr></thead><tbody>{group.components.map((component) => <tr key={component.name}><td>{component.name}</td><td>{component.perWellUl.toFixed(2)}</td><td>{component.totalUl.toFixed(2)}</td></tr>)}</tbody></table>
+                          <p>{tr("另加", "Add separately")} gDNA {tr("或", "or")} NTC water: {reactionSystem.templatePerWellUl.toFixed(1)} µL/{tr("孔", "well")}</p>
                         </article>
                       ))}
                     </div>
@@ -585,17 +606,17 @@ export function CnvPlanner() {
                 )}
 
                 <section className="card paste-preview">
-                  <div className="plate-toolbar"><div><span className="eyebrow">INSTRUMENT SAMPLE LIST</span><h3>仪器样本列表预览</h3></div><span className="pill"><Clipboard size={14} />Well + Sample</span></div>
-                  <div className="paste-table-wrap"><table><thead><tr><th>Well</th><th>Sample</th></tr></thead><tbody>{plate.wells.slice(0, 16).map((well) => <tr key={well.id}><td>{formatWellId(well.row, well.column, plateType)}</td><td>{well.sample}</td></tr>)}</tbody></table><div className="fade-note">导出 Excel 含完整 {plateType} 行列表，并同时提供“含表头”和“无表头”两个工作表。</div></div>
+                  <div className="plate-toolbar"><div><span className="eyebrow">INSTRUMENT SAMPLE LIST</span><h3>{tr("仪器样本列表预览", "Instrument sample-list preview")}</h3></div><span className="pill"><Clipboard size={14} />Well + Sample</span></div>
+                  <div className="paste-table-wrap"><table><thead><tr><th>Well</th><th>Sample</th></tr></thead><tbody>{plate.wells.slice(0, 16).map((well) => <tr key={well.id}><td>{formatWellId(well.row, well.column, plateType)}</td><td>{well.sample}</td></tr>)}</tbody></table><div className="fade-note">{tr(`导出 Excel 含完整 ${plateType} 行列表，并同时提供“含表头”和“无表头”两个工作表。`, `The Excel export contains the complete ${plateType}-well list, with separate sheets for versions with and without headers.`)}</div></div>
                 </section>
               </>
             )}
           </section>
-        </div>
-      </main>
+          </main>
+      </div>
 
       {toast && <div className="toast" role="status" onClick={() => setToast("")}><CheckCircle2 size={17} />{toast}<button><X size={14} /></button></div>}
-      <footer><span>Research Use Only · 数据仅在当前浏览器处理</span><span>Sources: Thermo Fisher TaqMan CNV Guide 4397425 · QuantStudio D&A Guide · Multiplex Optimization Guide</span></footer>
+      <footer><span>{tr("仅供科研使用 · 数据仅在当前浏览器处理", "Research Use Only · Data stays in this browser")}</span><span>Sources: Thermo Fisher TaqMan CNV Guide 4397425 · QuantStudio D&A Guide · Multiplex Optimization Guide</span></footer>
     </div>
   );
 }

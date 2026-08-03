@@ -18,7 +18,11 @@ test("server-renders the CNV planner shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>TaqMan CNV 板布局规划工具<\/title>/i);
-  assert.match(html, /TaqMan CNV 板布局规划工具/);
-  assert.match(html, /CNV Analysis Plate Planner/);
+  assert.match(html, /CNV Analysis 板布局规划工具/);
+  assert.match(html, /支持 96\/384 孔、官方 duplex 与自建 multiplex/);
+  assert.match(html, /10\.0 µL 体系计算/);
+  assert.match(html, />EN<\/button>/);
+  assert.doesNotMatch(html, /方法边界/);
+  assert.doesNotMatch(html, /\b(?:uL|μL)\b/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
