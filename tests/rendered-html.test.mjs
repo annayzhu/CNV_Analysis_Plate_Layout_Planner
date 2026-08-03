@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
@@ -25,6 +26,10 @@ test("server-renders the CNV planner shell", async () => {
   assert.match(html, /加样方式/);
   assert.match(html, /八道排枪各行上样/);
   assert.match(html, /反应体系与用量/);
+  assert.match(html, /class="layout-workbench"/);
+  assert.match(html, /class="reaction-column"/);
+  assert.match(html, /class="empty-state compact-empty-state card"/);
+  assert.match(html, /反应体系可在右侧随时配置/);
   assert.match(html, /class="unit-header">µL/);
   assert.doesNotMatch(html, /Ho_33001161_cn|Ho_33001153_cn|Ho_00021109_cn/);
   assert.doesNotMatch(html, /class="metric"/);
@@ -32,4 +37,14 @@ test("server-renders the CNV planner shell", async () => {
   assert.doesNotMatch(html, /方法边界/);
   assert.doesNotMatch(html, /\b(?:uL|μL)\b/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+});
+
+test("keeps instrument-copy guidance beside the plate actions", async () => {
+  const source = await readFile(
+    new URL("../app/CnvPlanner.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /className="copy-helper"/);
+  assert.match(source, /两者都用于将当前板的样本列表直接粘贴到 QuantStudio\/SDS/);
+  assert.match(source, /className="card reaction-card reaction-panel"/);
 });

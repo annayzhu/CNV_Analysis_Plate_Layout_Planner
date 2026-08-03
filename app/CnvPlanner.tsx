@@ -190,37 +190,34 @@ export function CnvPlanner() {
   const reporterIsDuplicate = (reporter: string) => duplicateReporters.has(reporter.trim().toLocaleUpperCase());
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const stored = JSON.parse(raw) as StoredState;
-      if (stored.version !== 1) return;
-      setLanguage(stored.language ?? "zh");
-      setPlateType(stored.plateType);
-      setAssayMode(stored.assayMode);
-      setSamples(stored.samples);
-      setTargets(stored.targets.map((target) => LEGACY_PRESET_ASSAY_IDS.has(target.assayId) ? { ...target, assayId: "" } : target));
-      setReference(LEGACY_PRESET_ASSAY_IDS.has(stored.reference.assayId) ? { ...stored.reference, assayId: "" } : stored.reference);
-      setReplicates(stored.replicates);
-      setLayoutPreset(stored.layoutPreset);
-      setLoadingPattern(stored.loadingPattern);
-      setReactionSystem(stored.reactionSystem);
-      setPlan(stored.plan);
-      setSavedAt(stored.savedAt);
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    const restoreTimer = window.setTimeout(() => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const stored = JSON.parse(raw) as StoredState;
+        if (stored.version !== 1) return;
+        setLanguage(stored.language ?? "zh");
+        setPlateType(stored.plateType);
+        setAssayMode(stored.assayMode);
+        setSamples(stored.samples);
+        setTargets(stored.targets.map((target) => LEGACY_PRESET_ASSAY_IDS.has(target.assayId) ? { ...target, assayId: "" } : target));
+        setReference(LEGACY_PRESET_ASSAY_IDS.has(stored.reference.assayId) ? { ...stored.reference, assayId: "" } : stored.reference);
+        setReplicates(stored.replicates);
+        setLayoutPreset(stored.layoutPreset);
+        setLoadingPattern(stored.plateType === 96 ? "sequential" : stored.loadingPattern);
+        setReactionSystem(stored.reactionSystem);
+        setPlan(stored.plan);
+        setSavedAt(stored.savedAt);
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }, 0);
+    return () => window.clearTimeout(restoreTimer);
   }, []);
 
   useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
   }, [language]);
-
-  useEffect(() => {
-    if (plateType === 96 && loadingPattern === "interleaved-8-channel") {
-      setLoadingPattern("sequential");
-    }
-  }, [plateType, loadingPattern]);
 
   function markDirty() {
     setIsDirty(true);
@@ -407,7 +404,7 @@ export function CnvPlanner() {
               <div className="plate-picker">
                 {([96, 384] as const).map((type) => {
                   const size = getPlateDimensions(type);
-                  return <button key={type} className={`plate-choice ${plateType === type ? "selected" : ""}`} onClick={() => { setPlateType(type); markDirty(); }}>
+                  return <button key={type} className={`plate-choice ${plateType === type ? "selected" : ""}`} onClick={() => { setPlateType(type); if (type === 96) setLoadingPattern("sequential"); markDirty(); }}>
                     <span><span className="plate-choice-name">{tr(`${type} 孔板`, `${type}-well plate`)}</span><span className="plate-choice-meta">{tr(`${size.rows} 行 × ${size.columns} 列`, `${size.rows} rows × ${size.columns} columns`)}</span></span>
                     <span className="plate-mini" aria-hidden="true">{Array.from({ length: 12 }).map((_, index) => <span key={index} />)}</span>
                   </button>;
@@ -478,17 +475,6 @@ export function CnvPlanner() {
               {duplicateReporters.size > 0 && <p className="reporter-error-note"><AlertTriangle size={14} />{tr("Multiplex 同孔 Reporter 不可重复。", "Reporter channels must be distinct within a multiplex well.")}</p>}
             </section>
 
-            <section className="card section-card">
-              <div className="section-heading"><span>04</span><div><h3>{tr("反应体系与用量", "Reaction setup & volumes")}</h3><p>{tr("每孔体积与配液余量", "Per-well volumes & overage")}</p></div></div>
-              <div className="field-row two">
-                <label><span>{tr("总体积", "Total volume")} (µL)</span><input type="number" step={0.5} value={reactionSystem.totalPerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, totalPerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
-                <label><span>2X Master Mix (µL)</span><input type="number" step={0.5} value={reactionSystem.masterMixPerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, masterMixPerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
-                <label><span>gDNA / NTC water (µL)</span><input type="number" step={0.5} value={reactionSystem.templatePerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, templatePerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
-                <label><span>{tr("余量", "Overage")} (%)</span><input type="number" step={1} value={reactionSystem.overagePercent} onChange={(event) => { setReactionSystem((current) => ({ ...current, overagePercent: Number(event.target.value) })); markDirty(); }} /></label>
-              </div>
-              <p className="micro-note"><Info size={14} />{tr("水量按每个反应组自动补足；multiplex target 数或 assay 体积变化后会分别校验。", "Water is calculated per reaction set; multiplex target count and assay-volume changes are validated independently.")}</p>
-            </section>
-
             <button className="button button-primary generate-button" disabled={duplicateReporters.size > 0} onClick={generatePlan}><Sparkles size={17} />{tr("生成 CNV 板布局", "Generate CNV layout")}</button>
           </aside>
 
@@ -511,15 +497,18 @@ export function CnvPlanner() {
             </section>
 
           <section className="result-content">
-            {!plan || !plate ? (
-              <div className="empty-state card">
-                <div className="empty-icon"><FlaskConical size={30} /></div>
-                <h3>{tr("板布局将在这里生成", "Your plate layout will appear here")}</h3>
-                <p>{tr("确认样本、assay、荧光通道和反应体系后，点击“生成 CNV 板布局”。", "Confirm the samples, assays, reporter channels, and reaction setup, then select Generate CNV layout.")}</p>
-                <div className="empty-checks"><span><CheckCircle2 size={15} />{tr("对照每板重复", "Controls on every plate")}</span><span><CheckCircle2 size={15} />{tr("复孔横向连续", "Contiguous replicates")}</span><span><CheckCircle2 size={15} />{tr("仪器粘贴表", "Instrument paste list")}</span></div>
-              </div>
-            ) : (
-              <>
+            <div className="layout-workbench">
+              <div className="plate-stage">
+                {!plan || !plate ? (
+                  <div className="empty-state compact-empty-state card">
+                    <div className="empty-icon"><FlaskConical size={22} /></div>
+                    <div>
+                      <h3>{tr("板布局将在这里生成", "Your plate layout will appear here")}</h3>
+                      <p>{tr("完成左侧样本与 assay 设置后生成布局；反应体系可在右侧随时配置。", "Complete the sample and assay setup on the left, then generate the layout; configure the reaction setup on the right at any time.")}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 <section className="card plate-card">
                   <div className="plate-toolbar">
                     <div>
@@ -533,6 +522,7 @@ export function CnvPlanner() {
                       <button className="button button-primary" disabled={reactionErrors.length > 0} onClick={() => exportAllPlates(plan, reactionSystem)}><Download size={15} />{tr("导出全部", "Export all")}</button>
                     </div>
                   </div>
+                  <p className="copy-helper"><Info size={12} />{tr("“含表头”复制 Well 与 Sample 两列及列名；“无表头”只复制数据行。两者都用于将当前板的样本列表直接粘贴到 QuantStudio/SDS。", "With headers copies the Well and Sample column names plus data; without headers copies data rows only. Both formats paste the current plate sample list directly into QuantStudio/SDS.")}</p>
 
                   <div className="plate-tabs">
                     {plan.plates.map((item, index) => (
@@ -597,27 +587,47 @@ export function CnvPlanner() {
                   </div>}
                 </section>
 
-                {requirements && (
-                  <section className="card reaction-card">
-                    <div className="plate-toolbar"><div><span className="eyebrow">REACTION SETUP</span><h3>{tr(`${reactionSystem.totalPerWellUl.toFixed(1)} µL 公共反应液与模板需求`, `${reactionSystem.totalPerWellUl.toFixed(1)} µL master-mix and template requirements`)}</h3></div><span className="pill"><Beaker size={14} />{reactionSystem.overagePercent}% overage</span></div>
-                    <div className="mix-groups">
-                      {requirements.groups.map((group) => (
-                        <article className="mix-group" key={group.reactionSet.id}>
-                          <div className="mix-title"><div><strong>{group.reactionSet.name}</strong><span>{tr(`${group.wells} 孔 · 配制 ${group.preparationReactions} 个反应`, `${group.wells} wells · prepare ${group.preparationReactions} reactions`)}</span></div><b>{group.mixDispensePerWellUl.toFixed(1)} µL/{tr("孔", "well")}</b></div>
-                          <table><thead><tr><th>{tr("组分", "Component")}</th><th>{tr("每孔", "Per well")} (µL)</th><th>{tr("总量", "Total")} (µL)</th></tr></thead><tbody>{group.components.map((component) => <tr key={component.name}><td>{component.name}</td><td>{component.perWellUl.toFixed(2)}</td><td>{component.totalUl.toFixed(2)}</td></tr>)}</tbody></table>
-                          <p>{tr("另加", "Add separately")} gDNA {tr("或", "or")} NTC water: {reactionSystem.templatePerWellUl.toFixed(1)} µL/{tr("孔", "well")}</p>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                )}
-
                 <section className="card paste-preview">
                   <div className="plate-toolbar"><div><span className="eyebrow">INSTRUMENT SAMPLE LIST</span><h3>{tr("仪器样本列表预览", "Instrument sample-list preview")}</h3></div><span className="pill"><Clipboard size={14} />Well + Sample</span></div>
                   <div className="paste-table-wrap"><table><thead><tr><th>Well</th><th>Sample</th></tr></thead><tbody>{plate.wells.slice(0, 16).map((well) => <tr key={well.id}><td>{formatWellId(well.row, well.column, plateType)}</td><td>{well.sample}</td></tr>)}</tbody></table><div className="fade-note">{tr(`导出 Excel 含完整 ${plateType} 行列表，并同时提供“含表头”和“无表头”两个工作表。`, `The Excel export contains the complete ${plateType}-well list, with separate sheets for versions with and without headers.`)}</div></div>
                 </section>
-              </>
-            )}
+                  </>
+                )}
+              </div>
+
+              <aside className="reaction-column" aria-label={tr("反应体系与用量", "Reaction setup and volumes")}>
+                <section className="card reaction-card reaction-panel">
+                  <div className="section-heading reaction-heading"><span>04</span><div><h3>{tr("反应体系与用量", "Reaction setup & volumes")}</h3><p>{tr("每孔体积与配液余量", "Per-well volumes & overage")}</p></div></div>
+                  <div className="field-row two reaction-input-grid">
+                    <label><span>{tr("总体积", "Total volume")} (µL)</span><input type="number" step={0.5} value={reactionSystem.totalPerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, totalPerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
+                    <label><span>2X Master Mix (µL)</span><input type="number" step={0.5} value={reactionSystem.masterMixPerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, masterMixPerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
+                    <label><span>gDNA / NTC water (µL)</span><input type="number" step={0.5} value={reactionSystem.templatePerWellUl} onChange={(event) => { setReactionSystem((current) => ({ ...current, templatePerWellUl: Number(event.target.value) })); markDirty(); }} /></label>
+                    <label><span>{tr("余量", "Overage")} (%)</span><input type="number" step={1} value={reactionSystem.overagePercent} onChange={(event) => { setReactionSystem((current) => ({ ...current, overagePercent: Number(event.target.value) })); markDirty(); }} /></label>
+                  </div>
+                  <p className="micro-note"><Info size={14} />{tr("水量按每个反应组自动补足；multiplex target 数或 assay 体积变化后会分别校验。", "Water is calculated per reaction set; multiplex target count and assay-volume changes are validated independently.")}</p>
+
+                  {requirements ? (
+                    <div className="reaction-results">
+                      <div className="reaction-results-heading">
+                        <div><span className="eyebrow">REACTION SETUP</span><h3>{tr(`${reactionSystem.totalPerWellUl.toFixed(1)} µL 配液需求`, `${reactionSystem.totalPerWellUl.toFixed(1)} µL mix requirements`)}</h3></div>
+                        <span className="pill"><Beaker size={14} />{reactionSystem.overagePercent}% overage</span>
+                      </div>
+                      <div className="mix-groups reaction-mix-groups">
+                        {requirements.groups.map((group) => (
+                          <article className="mix-group" key={group.reactionSet.id}>
+                            <div className="mix-title"><div><strong>{group.reactionSet.name}</strong><span>{tr(`${group.wells} 孔 · 配制 ${group.preparationReactions} 个反应`, `${group.wells} wells · prepare ${group.preparationReactions} reactions`)}</span></div><b>{group.mixDispensePerWellUl.toFixed(1)} µL/{tr("孔", "well")}</b></div>
+                            <table><thead><tr><th>{tr("组分", "Component")}</th><th>{tr("每孔", "Per well")} (µL)</th><th>{tr("总量", "Total")} (µL)</th></tr></thead><tbody>{group.components.map((component) => <tr key={component.name}><td>{component.name}</td><td>{component.perWellUl.toFixed(2)}</td><td>{component.totalUl.toFixed(2)}</td></tr>)}</tbody></table>
+                            <p>{tr("另加", "Add separately")} gDNA {tr("或", "or")} NTC water: {reactionSystem.templatePerWellUl.toFixed(1)} µL/{tr("孔", "well")}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="reaction-awaiting"><Beaker size={18} /><span>{tr("生成板布局后，这里会立即显示各反应组的配液总量。", "Generate the plate layout to see preparation totals for every reaction set here.")}</span></div>
+                  )}
+                </section>
+              </aside>
+            </div>
           </section>
           </main>
       </div>
