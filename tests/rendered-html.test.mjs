@@ -45,6 +45,9 @@ test("keeps instrument-copy guidance beside the plate actions", async () => {
     "utf8",
   );
   assert.match(source, /className="copy-helper"/);
+  assert.match(source, /复制含表头/);
+  assert.match(source, /复制无表头/);
   assert.match(source, /两者都用于将当前板的样本列表直接粘贴到 QuantStudio\/SDS/);
+  assert.doesNotMatch(source, /仪器样本列表预览|Instrument sample-list preview/);
   assert.match(source, /className="card reaction-card reaction-panel"/);
 });

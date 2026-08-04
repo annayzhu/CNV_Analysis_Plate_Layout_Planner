@@ -587,10 +587,6 @@ export function CnvPlanner() {
                   </div>}
                 </section>
 
-                <section className="card paste-preview">
-                  <div className="plate-toolbar"><div><span className="eyebrow">INSTRUMENT SAMPLE LIST</span><h3>{tr("仪器样本列表预览", "Instrument sample-list preview")}</h3></div><span className="pill"><Clipboard size={14} />Well + Sample</span></div>
-                  <div className="paste-table-wrap"><table><thead><tr><th>Well</th><th>Sample</th></tr></thead><tbody>{plate.wells.slice(0, 16).map((well) => <tr key={well.id}><td>{formatWellId(well.row, well.column, plateType)}</td><td>{well.sample}</td></tr>)}</tbody></table><div className="fade-note">{tr(`导出 Excel 含完整 ${plateType} 行列表，并同时提供“含表头”和“无表头”两个工作表。`, `The Excel export contains the complete ${plateType}-well list, with separate sheets for versions with and without headers.`)}</div></div>
-                </section>
                   </>
                 )}
               </div>
