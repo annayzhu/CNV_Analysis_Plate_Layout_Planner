@@ -7,7 +7,6 @@ import {
   Clipboard,
   Download,
   FileSpreadsheet,
-  FlaskConical,
   Info,
   Languages,
   Layers3,
@@ -59,7 +58,7 @@ type Language = "zh" | "en";
 const LEGACY_PRESET_ASSAY_IDS = new Set(["Ho_33001161_cn", "Ho_33001153_cn", "Ho_00021109_cn"]);
 
 interface StoredState {
-  version: 4;
+  version: 5;
   language?: Language;
   plateType: PlateType;
   assayMode: AssayMode;
@@ -71,9 +70,11 @@ interface StoredState {
   loadingPattern: LoadingPattern;
   reactionSystem: ReactionSystem;
   plan: PlanResult | null;
+  bulkText?: string;
   savedAt: string;
 }
 
+type StoredStateV4 = Omit<StoredState, "version"> & { version: 4 };
 type StoredStateV3 = Omit<StoredState, "version"> & { version: 3 };
 type StoredStateV2 = Omit<StoredState, "version"> & { version: 2 };
 type StoredStateV1 = Omit<StoredState, "version"> & { version: 1 };
@@ -87,13 +88,13 @@ const SAMPLE_TYPES: SampleType[] = [
   "qc-2",
 ];
 
-const DEFAULT_SAMPLES: SampleInput[] = [
+const EXAMPLE_SAMPLES: SampleInput[] = [
   { id: "sample-unknown-1", name: "Unknown_001", type: "unknown" },
   { id: "sample-calibrator", name: "Calibrator_2copy", type: "calibrator" },
   { id: "sample-ntc", name: "NTC", type: "ntc" },
 ];
 
-const DEFAULT_TARGETS: TargetAssay[] = [
+const EXAMPLE_TARGETS: TargetAssay[] = [
   {
     id: "target-gstm1",
     name: "GSTM1",
@@ -110,10 +111,17 @@ const DEFAULT_TARGETS: TargetAssay[] = [
   },
 ];
 
-const DEFAULT_REFERENCE: ReferenceAssay = {
+const EXAMPLE_REFERENCE: ReferenceAssay = {
   name: "RNase P",
   assayId: "",
   reporter: "VIC",
+  volumeUl: 0.5,
+};
+
+const EMPTY_REFERENCE: ReferenceAssay = {
+  name: "",
+  assayId: "",
+  reporter: "",
   volumeUl: 0.5,
 };
 
@@ -171,9 +179,9 @@ export function CnvPlanner() {
   const [language, setLanguage] = useState<Language>("zh");
   const [plateType, setPlateType] = useState<PlateType>(96);
   const [assayMode, setAssayMode] = useState<AssayMode>("multiplex");
-  const [samples, setSamples] = useState<SampleInput[]>(clone(DEFAULT_SAMPLES));
-  const [targets, setTargets] = useState<TargetAssay[]>(clone(DEFAULT_TARGETS));
-  const [reference, setReference] = useState<ReferenceAssay>(clone(DEFAULT_REFERENCE));
+  const [samples, setSamples] = useState<SampleInput[]>([]);
+  const [targets, setTargets] = useState<TargetAssay[]>([]);
+  const [reference, setReference] = useState<ReferenceAssay>(clone(EMPTY_REFERENCE));
   const [replicates, setReplicates] = useState(4);
   const [layoutPreset, setLayoutPreset] = useState<LayoutPreset>("sample-major");
   const [loadingPattern, setLoadingPattern] = useState<LoadingPattern>("sequential");
@@ -188,6 +196,7 @@ export function CnvPlanner() {
   const [toast, setToast] = useState("");
   const [savedAt, setSavedAt] = useState("");
   const [isDirty, setIsDirty] = useState(false);
+  const [hasRestored, setHasRestored] = useState(false);
   const tr = (zh: string, en: string) => (language === "zh" ? zh : en);
 
   const bulkNames = useMemo(() => parseNames(bulkText), [bulkText]);
@@ -207,6 +216,8 @@ export function CnvPlanner() {
   const duplicateReporters = useMemo(() => {
     return findDuplicateReporters({ assayMode, targets, reference });
   }, [assayMode, targets, reference]);
+  const hasCompleteAssayDefinition = targets.some((target) => target.name.trim()) && Boolean(reference.name.trim());
+  const canGenerate = samples.some((sample) => sample.name.trim()) && hasCompleteAssayDefinition && duplicateReporters.size === 0;
   const reporterIsDuplicate = (reporter: string) => duplicateReporters.has(reporter.trim().toLocaleUpperCase());
 
   useEffect(() => {
@@ -214,8 +225,8 @@ export function CnvPlanner() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
-        const stored = JSON.parse(raw) as StoredState | StoredStateV3 | StoredStateV2 | StoredStateV1;
-        if (stored.version !== 1 && stored.version !== 2 && stored.version !== 3 && stored.version !== 4) return;
+        const stored = JSON.parse(raw) as StoredState | StoredStateV4 | StoredStateV3 | StoredStateV2 | StoredStateV1;
+        if (stored.version !== 1 && stored.version !== 2 && stored.version !== 3 && stored.version !== 4 && stored.version !== 5) return;
         const migrateLegacy384 =
           stored.version === 1 &&
           stored.plateType === 384 &&
@@ -270,6 +281,7 @@ export function CnvPlanner() {
         setLoadingPattern(restoredLoadingPattern);
         setReactionSystem(stored.reactionSystem);
         setPlan(restoredPlan);
+        setBulkText(stored.bulkText ?? "");
         setSavedAt(stored.savedAt);
         if (migrateLegacy384 || migrateVerticalLoading || migratePassMajor384) {
           setIsDirty(true);
@@ -289,6 +301,8 @@ export function CnvPlanner() {
         }
       } catch {
         localStorage.removeItem(STORAGE_KEY);
+      } finally {
+        setHasRestored(true);
       }
     }, 0);
     return () => window.clearTimeout(restoreTimer);
@@ -297,6 +311,37 @@ export function CnvPlanner() {
   useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
   }, [language]);
+
+  useEffect(() => {
+    if (!hasRestored) return;
+    const autoSaveTimer = window.setTimeout(() => {
+      try {
+        const autoSavedAt = new Date().toISOString();
+        const stored: StoredState = {
+          version: 5,
+          language,
+          plateType,
+          assayMode,
+          samples,
+          targets,
+          reference,
+          replicates,
+          layoutPreset,
+          loadingPattern,
+          reactionSystem,
+          plan,
+          bulkText,
+          savedAt: autoSavedAt,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+        setSavedAt(autoSavedAt);
+        setIsDirty(false);
+      } catch {
+        setToast(language === "zh" ? "自动保存失败，请使用顶部“保存”重试。" : "Autosave failed. Use Save in the top bar to retry.");
+      }
+    }, 600);
+    return () => window.clearTimeout(autoSaveTimer);
+  }, [assayMode, bulkText, hasRestored, language, layoutPreset, loadingPattern, plan, plateType, reactionSystem, reference, replicates, samples, targets]);
 
   function markDirty() {
     setIsDirty(true);
@@ -336,6 +381,37 @@ export function CnvPlanner() {
     setToast(tr(`已导入 ${additions.length} 个样本名称。`, `Imported ${additions.length} sample name(s).`));
   }
 
+  function loadExample() {
+    setPlateType(96);
+    setAssayMode("multiplex");
+    setSamples(clone(EXAMPLE_SAMPLES));
+    setTargets(clone(EXAMPLE_TARGETS));
+    setReference(clone(EXAMPLE_REFERENCE));
+    setBulkText("");
+    setReplicates(4);
+    setLayoutPreset("sample-major");
+    setLoadingPattern("sequential");
+    setPlan(null);
+    setActivePlate(0);
+    setSelectedWell(null);
+    markDirty();
+    setToast(tr("示例样本与 CNV Assay 已载入；确认后再生成板布局。", "Example samples and CNV assays loaded. Review them before generating the layout."));
+  }
+
+  function clearSamples() {
+    if (samples.length > 0 || bulkText.trim()) {
+      const confirmed = window.confirm(tr("清空样本录入区中的全部样本和待导入文字？", "Clear all samples and pasted text from the sample-entry section?"));
+      if (!confirmed) return;
+    }
+    setSamples([]);
+    setBulkText("");
+    setPlan(null);
+    setActivePlate(0);
+    setSelectedWell(null);
+    markDirty();
+    setToast(tr("样本录入区已清空。", "Sample entry cleared."));
+  }
+
   function generatePlan() {
     try {
       const input: PlanInput = {
@@ -360,25 +436,30 @@ export function CnvPlanner() {
   }
 
   function saveState() {
-    const stored: StoredState = {
-      version: 4,
-      language,
-      plateType,
-      assayMode,
-      samples,
-      targets,
-      reference,
-      replicates,
-      layoutPreset,
-      loadingPattern,
-      reactionSystem,
-      plan,
-      savedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
-    setSavedAt(stored.savedAt);
-    setIsDirty(false);
-    setToast(tr("已保存到本浏览器。", "Saved in this browser."));
+    try {
+      const stored: StoredState = {
+        version: 5,
+        language,
+        plateType,
+        assayMode,
+        samples,
+        targets,
+        reference,
+        replicates,
+        layoutPreset,
+        loadingPattern,
+        reactionSystem,
+        plan,
+        bulkText,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+      setSavedAt(stored.savedAt);
+      setIsDirty(false);
+      setToast(tr("已保存到本浏览器。", "Saved in this browser."));
+    } catch {
+      setToast(tr("保存失败，请检查浏览器的本地存储权限。", "Save failed. Check this browser's local-storage permission."));
+    }
   }
 
   function resetTool() {
@@ -386,14 +467,17 @@ export function CnvPlanner() {
     localStorage.removeItem(STORAGE_KEY);
     setPlateType(96);
     setAssayMode("multiplex");
-    setSamples(clone(DEFAULT_SAMPLES));
-    setTargets(clone(DEFAULT_TARGETS));
-    setReference(clone(DEFAULT_REFERENCE));
+    setSamples([]);
+    setTargets([]);
+    setReference(clone(EMPTY_REFERENCE));
     setReplicates(4);
     setLayoutPreset("sample-major");
     setLoadingPattern("sequential");
     setReactionSystem(DEFAULT_REACTION_SYSTEM);
     setPlan(null);
+    setBulkText("");
+    setActivePlate(0);
+    setSelectedWell(null);
     setSavedAt("");
     setIsDirty(false);
     setToast(tr("工具已重置。", "Reset complete."));
@@ -558,8 +642,8 @@ export function CnvPlanner() {
             </section>
 
             <section className="card section-card">
-              <div className="section-heading"><span>02</span><div><h3>{tr("样本与对照", "Samples & controls")}</h3><p>{tr("逐个输入或从 Excel 粘贴", "Enter individually or paste from Excel")}</p></div></div>
-              <textarea className="bulk-input" value={bulkText} onChange={(event) => setBulkText(event.target.value)} placeholder={tr("从 Excel 粘贴样本名称，每行一个…", "Paste sample names from Excel, one per line…")} />
+              <div className="section-heading"><span>02</span><div><h3>{tr("样本与对照", "Samples & controls")}</h3><p>{tr("逐个输入或从 Excel 粘贴", "Enter individually or paste from Excel")}</p></div><button className="button button-ghost section-heading-action" type="button" onClick={clearSamples} disabled={samples.length === 0 && !bulkText.trim()}><Trash2 size={13} />{tr("清空", "Clear")}</button></div>
+              <textarea className="bulk-input" value={bulkText} onChange={(event) => { setBulkText(event.target.value); markDirty(); }} placeholder={tr("从 Excel 粘贴样本名称，每行一个…", "Paste sample names from Excel, one per line…")} />
               <button className="button button-soft full" onClick={importSamples} disabled={bulkNames.length === 0}><Plus size={16} />{tr(`导入 ${bulkNames.length} 个样本名称`, `Import ${bulkNames.length} sample name(s)`)}</button>
               <div className="editable-list sample-list">
                 {samples.map((sample, index) => (
@@ -572,7 +656,7 @@ export function CnvPlanner() {
                   </div>
                 ))}
               </div>
-              <button className="text-button" onClick={() => { setSamples((current) => [...current, { id: uid("sample"), name: `Unknown_${String(current.filter((sample) => sample.type === "unknown").length + 1).padStart(3, "0")}`, type: "unknown" }]); markDirty(); }}><Plus size={14} />{tr("添加一行", "Add row")}</button>
+              <button className="text-button" onClick={() => { setSamples((current) => [...current, { id: uid("sample"), name: "", type: "unknown" }]); markDirty(); }}><Plus size={14} />{tr("添加一行", "Add row")}</button>
             </section>
 
             <section className="card section-card">
@@ -587,7 +671,7 @@ export function CnvPlanner() {
                   <button className="icon-button" disabled={targets.length === 1} aria-label="删除 target" onClick={() => { setTargets((current) => current.filter((_, targetIndex) => targetIndex !== index)); markDirty(); }}><Trash2 size={14} /></button>
                 </div>
               ))}
-              <button className="text-button" onClick={() => { setTargets((current) => [...current, { id: uid("target"), name: `Target ${current.length + 1}`, assayId: "", reporter: "", volumeUl: 0.5 }]); markDirty(); }}><Plus size={14} />{tr("添加 Target assay", "Add target assay")}</button>
+              <button className="text-button" onClick={() => { setTargets((current) => [...current, { id: uid("target"), name: "", assayId: "", reporter: "", volumeUl: 0.5 }]); markDirty(); }}><Plus size={14} />{tr("添加 Target assay", "Add target assay")}</button>
               <div className="reference-block">
                 <span className="reference-label">REFERENCE</span>
                 <div className="assay-row no-delete">
@@ -598,14 +682,14 @@ export function CnvPlanner() {
                   <span />
                 </div>
               </div>
-              <div className="reaction-set-preview">
+              {hasCompleteAssayDefinition && <div className="reaction-set-preview">
                 <span>{tr(`将生成 ${reactionSets.length} 个反应组`, `${reactionSets.length} reaction set(s) will be generated`)}</span>
                 {reactionSets.map((set) => <code key={set.id}>{set.name}</code>)}
-              </div>
+              </div>}
               {duplicateReporters.size > 0 && <p className="reporter-error-note"><AlertTriangle size={14} />{tr("Multiplex 同孔 Reporter 不可重复。", "Reporter channels must be distinct within a multiplex well.")}</p>}
             </section>
 
-            <button className="button button-primary generate-button" disabled={duplicateReporters.size > 0} onClick={generatePlan}><Sparkles size={17} />{tr("生成 CNV 板布局", "Generate CNV layout")}</button>
+            <button className="button button-primary generate-button" disabled={!canGenerate} onClick={generatePlan}><Sparkles size={17} />{tr("生成 CNV 板布局", "Generate CNV layout")}</button>
           </aside>
 
           <main className="main-area result-column">
@@ -630,11 +714,14 @@ export function CnvPlanner() {
             <div className="layout-workbench">
               <div className="plate-stage">
                 {!plan || !plate ? (
-                  <div className="empty-state compact-empty-state card">
-                    <div className="empty-icon"><FlaskConical size={22} /></div>
-                    <div>
-                      <h3>{tr("板布局将在这里生成", "Your plate layout will appear here")}</h3>
-                      <p>{tr("完成左侧样本与 assay 设置后生成布局；反应体系可在右侧随时配置。", "Complete the sample and assay setup on the left, then generate the layout; configure the reaction setup on the right at any time.")}</p>
+                  <div className="empty-state qpcr-empty-state card">
+                    <div className="empty-state-inner">
+                      <div className="ghost-plate" aria-hidden="true">
+                        {Array.from({ length: 96 }).map((_, index) => <span className="ghost-well" key={index} />)}
+                      </div>
+                      <h2>{tr("先添加样本和 CNV Assay", "Add samples and CNV assays first")}</h2>
+                      <p>{tr("系统会计算孔板数，并生成可点选、移动和编辑的布局。", "The planner will calculate the plate count and generate a selectable, movable, and editable layout.")}</p>
+                      <button className="button button-soft load-example-button" type="button" onClick={loadExample}><Beaker size={16} />{tr("载入示例", "Load example")}</button>
                     </div>
                   </div>
                 ) : (

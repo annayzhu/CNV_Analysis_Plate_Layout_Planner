@@ -29,10 +29,14 @@ test("server-renders the CNV planner shell", async () => {
   assert.match(html, /反应体系与用量/);
   assert.match(html, /class="layout-workbench"/);
   assert.match(html, /class="reaction-column"/);
-  assert.match(html, /class="empty-state compact-empty-state card"/);
-  assert.match(html, /反应体系可在右侧随时配置/);
+  assert.match(html, /class="empty-state qpcr-empty-state card"/);
+  assert.match(html, /class="ghost-plate"/);
+  assert.match(html, /先添加样本和 CNV Assay/);
+  assert.match(html, /载入示例/);
+  assert.match(html, /系统会计算孔板数，并生成可点选、移动和编辑的布局/);
   assert.match(html, /class="unit-header">µL/);
   assert.doesNotMatch(html, /Ho_33001161_cn|Ho_33001153_cn|Ho_00021109_cn/);
+  assert.doesNotMatch(html, /Unknown_001|Calibrator_2copy|GSTM1|GSTT1|RNase P/);
   assert.doesNotMatch(html, /class="metric"/);
   assert.match(html, />EN<\/button>/);
   assert.doesNotMatch(html, /方法边界/);
@@ -56,7 +60,14 @@ test("keeps instrument-copy guidance beside the plate actions", async () => {
   assert.match(source, /className="loading-route-guide"/);
   assert.match(source, /row-route-marker/);
   assert.match(source, /每组 8 个样本纵向排列；复孔向右连续/);
-  assert.match(source, /version: 4/);
+  assert.match(source, /version: 5/);
+  assert.match(source, /function loadExample\(\)/);
+  assert.match(source, /function clearSamples\(\)/);
+  assert.match(source, /setSamples\(\[\]\)/);
+  assert.match(source, /autoSaveTimer/);
+  assert.match(source, /localStorage\.setItem\(STORAGE_KEY/);
+  assert.match(source, /载入示例/);
+  assert.match(source, /样本录入区已清空/);
   assert.match(source, /migrateVerticalLoading/);
   assert.match(source, /migratePassMajor384/);
   assert.match(source, /先铺满第 1 轮全部列块，再开始第 2 轮/);
@@ -67,6 +78,8 @@ test("keeps instrument-copy guidance beside the plate actions", async () => {
     1,
   );
   assert.match(css, /\.loading-pattern-option strong \{[^}]*font-size: 11px;/);
+  assert.match(css, /\.ghost-plate \{[^}]*repeat\(12, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.section-heading-action \{/);
   assert.match(source, /loading-pattern-option selected is-static/);
   assert.doesNotMatch(source, /loading-pattern-option selected fixed/);
   assert.match(css, /\.control-column, \.result-column \{[^}]*align-content: start;/);
