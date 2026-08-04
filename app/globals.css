@@ -191,6 +191,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 label > span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 10px; font-weight: 700; }
 input, textarea, select { width: 100%; border: 1px solid var(--border); border-radius: 9px; background: white; }
 input, select { min-height: 37px; padding: 7px 9px; }
+.field-row select, .field-row select option { font-size: 12px; font-weight: 520; }
+.loading-pattern-note { margin: 7px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
 textarea { padding: 10px; resize: vertical; }
 input:hover, textarea:hover, select:hover { border-color: var(--border-strong); }
 .micro-warning, .micro-note { display: flex; align-items: flex-start; gap: 6px; margin: 10px 0 0; padding: 8px 10px; border-radius: 9px; font-size: 10px; }

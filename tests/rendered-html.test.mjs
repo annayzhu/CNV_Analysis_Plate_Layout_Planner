@@ -24,7 +24,7 @@ test("server-renders the CNV planner shell", async () => {
   assert.match(html, /10\.0 µL 体系计算/);
   assert.match(html, /请先完成左侧实验设置/);
   assert.match(html, /加样方式/);
-  assert.match(html, /八道排枪各行上样/);
+  assert.match(html, /八道排枪直接上样/);
   assert.match(html, /反应体系与用量/);
   assert.match(html, /class="layout-workbench"/);
   assert.match(html, /class="reaction-column"/);
@@ -40,14 +40,22 @@ test("server-renders the CNV planner shell", async () => {
 });
 
 test("keeps instrument-copy guidance beside the plate actions", async () => {
-  const source = await readFile(
-    new URL("../app/CnvPlanner.tsx", import.meta.url),
-    "utf8",
-  );
+  const [source, css] = await Promise.all([
+    readFile(new URL("../app/CnvPlanner.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
   assert.match(source, /className="copy-helper"/);
   assert.match(source, /复制含表头/);
   assert.match(source, /复制无表头/);
   assert.match(source, /两者都用于将当前板的样本列表直接粘贴到 QuantStudio\/SDS/);
   assert.doesNotMatch(source, /仪器样本列表预览|Instrument sample-list preview/);
+  assert.match(source, /连续行序 A–P/);
+  assert.match(source, /9 mm 八道隔行/);
+  assert.match(source, /9 mm 八道隔行分 A\/C\/E\/G\/I\/K\/M\/O/);
+  assert.equal(
+    source.match(/exportAllPlates\(plan, reactionSystem\)/g)?.length,
+    1,
+  );
+  assert.match(css, /\.field-row select, \.field-row select option \{ font-size: 12px;/);
   assert.match(source, /className="card reaction-card reaction-panel"/);
 });

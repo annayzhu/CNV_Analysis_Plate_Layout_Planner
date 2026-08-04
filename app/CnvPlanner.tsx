@@ -422,8 +422,9 @@ export function CnvPlanner() {
               <div className="field-row three">
                 <label><span>{tr("复孔", "Replicates")}</span><input type="number" min={1} max={8} value={replicates} onChange={(event) => { setReplicates(Number(event.target.value)); markDirty(); }} /></label>
                 <label><span>{tr("排序", "Layout")}</span><select value={layoutPreset} onChange={(event) => { setLayoutPreset(event.target.value as LayoutPreset); markDirty(); }}><option value="sample-major">{tr("按样本", "By sample")}</option><option value="assay-major">{tr("按反应组", "By reaction set")}</option></select></label>
-                <label><span>{tr("加样方式", "Loading method")}</span><select value={loadingPattern} disabled={plateType === 96} onChange={(event) => { setLoadingPattern(event.target.value as LoadingPattern); markDirty(); }}><option value="sequential">{tr("八道排枪各行上样", "8-channel pipette by rows")}</option><option value="interleaved-8-channel">{tr("9 mm 八道隔行上样", "9 mm interleaved 8-channel")}</option></select></label>
+                <label><span>{tr("加样方式", "Loading method")}</span><select value={loadingPattern} disabled={plateType === 96} onChange={(event) => { setLoadingPattern(event.target.value as LoadingPattern); markDirty(); }}><option value="sequential">{plateType === 96 ? tr("八道排枪直接上样", "Direct 8-channel loading") : tr("连续行序 A–P", "Sequential rows A–P")}</option><option value="interleaved-8-channel">{tr("9 mm 八道隔行", "9 mm interleaved 8-channel")}</option></select></label>
               </div>
+              {plateType === 384 && <p className="loading-pattern-note">{tr("连续行序按 A→P；9 mm 八道隔行分 A/C/E/G/I/K/M/O 与 B/D/F/H/J/L/N/P 两轮。", "Sequential follows A→P; 9 mm interleaved uses A/C/E/G/I/K/M/O and B/D/F/H/J/L/N/P in two passes.")}</p>}
               {replicates < 4 && <p className="micro-warning">{tr("官方 CNV 指南建议 4 个复孔；当前设置适合作为方法开发条件，需谨慎判读。", "The official CNV guide recommends four replicates; use fewer replicates only for carefully reviewed method development.")}</p>}
             </section>
 
@@ -519,7 +520,6 @@ export function CnvPlanner() {
                       <button className="button" onClick={() => handleCopy(true)}><Clipboard size={15} />{tr("复制含表头", "Copy with headers")}</button>
                       <button className="button" onClick={() => handleCopy(false)}><Clipboard size={15} />{tr("复制无表头", "Copy without headers")}</button>
                       <button className="button" onClick={() => exportOnePlate(plan, plate, reactionSystem)}><FileSpreadsheet size={15} />{tr("本板 Excel", "Plate Excel")}</button>
-                      <button className="button button-primary" disabled={reactionErrors.length > 0} onClick={() => exportAllPlates(plan, reactionSystem)}><Download size={15} />{tr("导出全部", "Export all")}</button>
                     </div>
                   </div>
                   <p className="copy-helper"><Info size={12} />{tr("“含表头”复制 Well 与 Sample 两列及列名；“无表头”只复制数据行。两者都用于将当前板的样本列表直接粘贴到 QuantStudio/SDS。", "With headers copies the Well and Sample column names plus data; without headers copies data rows only. Both formats paste the current plate sample list directly into QuantStudio/SDS.")}</p>
