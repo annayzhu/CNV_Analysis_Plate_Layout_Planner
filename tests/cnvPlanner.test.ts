@@ -124,8 +124,8 @@ test("96-well direct 8-channel loading fills eight samples vertically before mov
   });
 });
 
-test("384-well interleaved loading fills samples vertically by pass before moving right", () => {
-  const samples = Array.from({ length: 18 }, (_, index) => ({
+test("384-well interleaved loading fills every column block in pass 1 before starting pass 2", () => {
+  const samples = Array.from({ length: 100 }, (_, index) => ({
     id: `u${index + 1}`,
     name: `U${index + 1}`,
     type: "unknown" as const,
@@ -135,24 +135,41 @@ test("384-well interleaved loading fills samples vertically by pass before movin
     samples,
     layoutPreset: "assay-major",
     loadingPattern: "interleaved-8-channel",
-    replicates: 4,
+    replicates: 2,
   }));
   const plate = plan.plates[0];
+  const passRows = [
+    INTERLEAVED_384_ROW_ORDER.slice(0, 8),
+    INTERLEAVED_384_ROW_ORDER.slice(8),
+  ];
+  const unitsPerPass = 8 * 12;
 
   samples.forEach((sample, index) => {
     const firstReplicate = plate.wells.find(
       (well) => well.sampleId === sample.id && well.replicate === 1,
     );
     assert.ok(firstReplicate);
+    const passIndex = Math.floor(index / unitsPerPass);
+    const withinPass = index % unitsPerPass;
     assert.equal(
       firstReplicate.row,
-      INTERLEAVED_384_ROW_ORDER[index % INTERLEAVED_384_ROW_ORDER.length],
+      passRows[passIndex][withinPass % 8],
     );
     assert.equal(
       firstReplicate.column,
-      Math.floor(index / INTERLEAVED_384_ROW_ORDER.length) * 4,
+      Math.floor(withinPass / 8) * 2,
     );
   });
+
+  const firstReplicateId = (sampleId: string) => plate.wells.find(
+    (well) => well.sampleId === sampleId && well.replicate === 1,
+  )?.id;
+  assert.equal(firstReplicateId("u1"), "A1");
+  assert.equal(firstReplicateId("u8"), "O1");
+  assert.equal(firstReplicateId("u9"), "A3");
+  assert.equal(firstReplicateId("u16"), "O3");
+  assert.equal(firstReplicateId("u96"), "O23");
+  assert.equal(firstReplicateId("u97"), "B1");
 });
 
 test("multiplex rejects duplicate reporter channels", () => {

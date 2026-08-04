@@ -59,7 +59,7 @@ type Language = "zh" | "en";
 const LEGACY_PRESET_ASSAY_IDS = new Set(["Ho_33001161_cn", "Ho_33001153_cn", "Ho_00021109_cn"]);
 
 interface StoredState {
-  version: 3;
+  version: 4;
   language?: Language;
   plateType: PlateType;
   assayMode: AssayMode;
@@ -74,6 +74,7 @@ interface StoredState {
   savedAt: string;
 }
 
+type StoredStateV3 = Omit<StoredState, "version"> & { version: 3 };
 type StoredStateV2 = Omit<StoredState, "version"> & { version: 2 };
 type StoredStateV1 = Omit<StoredState, "version"> & { version: 1 };
 
@@ -213,8 +214,8 @@ export function CnvPlanner() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
-        const stored = JSON.parse(raw) as StoredState | StoredStateV2 | StoredStateV1;
-        if (stored.version !== 1 && stored.version !== 2 && stored.version !== 3) return;
+        const stored = JSON.parse(raw) as StoredState | StoredStateV3 | StoredStateV2 | StoredStateV1;
+        if (stored.version !== 1 && stored.version !== 2 && stored.version !== 3 && stored.version !== 4) return;
         const migrateLegacy384 =
           stored.version === 1 &&
           stored.plateType === 384 &&
@@ -236,8 +237,13 @@ export function CnvPlanner() {
           ? { ...stored.reference, assayId: "" }
           : stored.reference;
         const migrateVerticalLoading = stored.version < 3 && Boolean(stored.plan);
+        const migratePassMajor384 =
+          stored.version < 4 &&
+          stored.plateType === 384 &&
+          restoredLoadingPattern === "interleaved-8-channel" &&
+          Boolean(stored.plan);
         let restoredPlan = stored.plan;
-        if (migrateLegacy384 || migrateVerticalLoading) {
+        if (migrateLegacy384 || migrateVerticalLoading || migratePassMajor384) {
           try {
             restoredPlan = planCnvLayout({
               plateType: stored.plateType,
@@ -265,10 +271,14 @@ export function CnvPlanner() {
         setReactionSystem(stored.reactionSystem);
         setPlan(restoredPlan);
         setSavedAt(stored.savedAt);
-        if (migrateLegacy384 || migrateVerticalLoading) {
+        if (migrateLegacy384 || migrateVerticalLoading || migratePassMajor384) {
           setIsDirty(true);
           setToast(
-            migrateLegacy384
+            migratePassMajor384
+              ? stored.language === "en"
+                ? "Updated the saved 384-well layout to fill every Pass 1 column block before starting Pass 2."
+                : "已将保存的 384 孔板更新为先铺满第 1 轮全部列块，再开始第 2 轮。"
+              : migrateLegacy384
               ? stored.language === "en"
                 ? "Updated the saved 384-well layout to the recommended 9 mm interleaved loading route."
                 : "已将保存的 384 孔布局更新为推荐的 9 mm 八道隔行路径。"
@@ -351,7 +361,7 @@ export function CnvPlanner() {
 
   function saveState() {
     const stored: StoredState = {
-      version: 3,
+      version: 4,
       language,
       plateType,
       assayMode,
@@ -542,7 +552,7 @@ export function CnvPlanner() {
                     </button>
                   </div>
                 )}
-                {plateType === 384 && loadingPattern === "interleaved-8-channel" && <p className="loading-pattern-note">{tr("第 1 轮 A/C/E/G/I/K/M/O；第 2 轮 B/D/F/H/J/L/N/P。样本沿隔行路径纵向排列。", "Pass 1 uses A/C/E/G/I/K/M/O; pass 2 uses B/D/F/H/J/L/N/P. Samples fill vertically along the interleaved route.")}</p>}
+                {plateType === 384 && loadingPattern === "interleaved-8-channel" && <p className="loading-pattern-note">{tr("先用 A/C/E/G/I/K/M/O 将全部复孔列块从左到右铺满，再从第 1 列开始 B/D/F/H/J/L/N/P。", "Fill every replicate column block from left to right using A/C/E/G/I/K/M/O, then restart at column 1 for B/D/F/H/J/L/N/P.")}</p>}
               </div>
               {replicates < 4 && <p className="micro-warning">{tr("官方 CNV 指南建议 4 个复孔；当前设置适合作为方法开发条件，需谨慎判读。", "The official CNV guide recommends four replicates; use fewer replicates only for carefully reviewed method development.")}</p>}
             </section>
@@ -656,7 +666,7 @@ export function CnvPlanner() {
                       <span className="loading-route-guide-title">{tr("上样路径", "Loading route")}</span>
                       <span className="loading-route-pass pass-one"><b aria-hidden="true">①</b><span>{tr("第 1 轮", "Pass 1")} · A/C/E/G/I/K/M/O</span></span>
                       <span className="loading-route-pass pass-two"><b aria-hidden="true">②</b><span>{tr("第 2 轮", "Pass 2")} · B/D/F/H/J/L/N/P</span></span>
-                      <span className="loading-route-note">{tr("板图按真实 A–P 行显示", "Plate remains in physical A–P order")}</span>
+                      <span className="loading-route-note">{tr("先铺满第 1 轮全部列块，再开始第 2 轮", "Fill all Pass 1 column blocks before starting Pass 2")}</span>
                     </div>
                   )}
 

@@ -176,12 +176,15 @@ function createEmptyPlate(plateNumber: number, plateType: PlateType): PlannerPla
   return { plateNumber, name: `Plate ${plateNumber}`, wells };
 }
 
-function orderedRows(input: Pick<PlanInput, "plateType" | "loadingPattern">) {
+function loadingRowPasses(input: Pick<PlanInput, "plateType" | "loadingPattern">) {
   const { rows } = getPlateDimensions(input.plateType);
   if (input.plateType === 384 && input.loadingPattern === "interleaved-8-channel") {
-    return [...INTERLEAVED_384_ROW_ORDER];
+    return [
+      INTERLEAVED_384_ROW_ORDER.slice(0, 8),
+      INTERLEAVED_384_ROW_ORDER.slice(8),
+    ];
   }
-  return Array.from({ length: rows }, (_, index) => index);
+  return [Array.from({ length: rows }, (_, index) => index)];
 }
 
 function orderedUnits(
@@ -232,22 +235,28 @@ class PlateCursor {
   private slotPointer = 0;
 
   constructor(
-    private readonly rowOrder: number[],
+    private readonly rowPasses: number[][],
     private readonly columns: number,
   ) {}
 
   next(replicates: number) {
     if (replicates > this.columns) return null;
     const columnBlocks = Math.floor(this.columns / replicates);
-    const capacity = this.rowOrder.length * columnBlocks;
-    if (this.slotPointer >= capacity) return null;
-    const rowIndex = this.slotPointer % this.rowOrder.length;
-    const columnBlock = Math.floor(this.slotPointer / this.rowOrder.length);
-    this.slotPointer += 1;
-    return {
-      row: this.rowOrder[rowIndex],
-      column: columnBlock * replicates,
-    };
+    let slotWithinPasses = this.slotPointer;
+    for (const rows of this.rowPasses) {
+      const passCapacity = rows.length * columnBlocks;
+      if (slotWithinPasses < passCapacity) {
+        const rowIndex = slotWithinPasses % rows.length;
+        const columnBlock = Math.floor(slotWithinPasses / rows.length);
+        this.slotPointer += 1;
+        return {
+          row: rows[rowIndex],
+          column: columnBlock * replicates,
+        };
+      }
+      slotWithinPasses -= passCapacity;
+    }
+    return null;
   }
 }
 
@@ -280,14 +289,14 @@ export function planCnvLayout(input: PlanInput): PlanResult {
   const unknowns = input.samples.filter((sample) => sample.type === "unknown");
   const controlUnits = orderedUnits(controls, reactionSets, input.layoutPreset);
   const unknownUnits = orderedUnits(unknowns, reactionSets, input.layoutPreset);
-  const rowOrder = orderedRows(input);
+  const rowPasses = loadingRowPasses(input);
   const { columns } = getPlateDimensions(input.plateType);
   const plates: PlannerPlate[] = [];
   let unknownIndex = 0;
 
   do {
     const plate = createEmptyPlate(plates.length + 1, input.plateType);
-    const cursor = new PlateCursor(rowOrder, columns);
+    const cursor = new PlateCursor(rowPasses, columns);
 
     for (const unit of controlUnits) {
       const slot = cursor.next(input.replicates);

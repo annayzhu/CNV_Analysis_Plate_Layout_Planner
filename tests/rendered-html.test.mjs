@@ -52,12 +52,14 @@ test("keeps instrument-copy guidance beside the plate actions", async () => {
   assert.doesNotMatch(source, /仪器样本列表预览|Instrument sample-list preview/);
   assert.match(source, /连续孔位上样/);
   assert.match(source, /9 mm 八道隔行/);
-  assert.match(source, /第 1 轮 A\/C\/E\/G\/I\/K\/M\/O/);
+  assert.match(source, /A\/C\/E\/G\/I\/K\/M\/O/);
   assert.match(source, /className="loading-route-guide"/);
   assert.match(source, /row-route-marker/);
   assert.match(source, /每组 8 个样本纵向排列；复孔向右连续/);
-  assert.match(source, /version: 3/);
+  assert.match(source, /version: 4/);
   assert.match(source, /migrateVerticalLoading/);
+  assert.match(source, /migratePassMajor384/);
+  assert.match(source, /先铺满第 1 轮全部列块，再开始第 2 轮/);
   assert.match(source, /defaultLoadingPattern\(type\)/);
   assert.match(source, /setLayoutPreset\("assay-major"\)/);
   assert.equal(
