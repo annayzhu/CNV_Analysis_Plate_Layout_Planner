@@ -100,6 +100,30 @@ test("384-well defaults to the 9 mm interleaved loading route", () => {
   assert.equal(defaultLoadingPattern(384), "interleaved-8-channel");
 });
 
+test("96-well direct 8-channel loading fills eight samples vertically before moving replicates right", () => {
+  const samples = Array.from({ length: 10 }, (_, index) => ({
+    id: `u${index + 1}`,
+    name: `U${index + 1}`,
+    type: "unknown" as const,
+  }));
+  const plan = planCnvLayout(baseInput({
+    plateType: 96,
+    samples,
+    loadingPattern: "sequential",
+    replicates: 4,
+  }));
+  const plate = plan.plates[0];
+
+  samples.forEach((sample, index) => {
+    const firstReplicate = plate.wells.find(
+      (well) => well.sampleId === sample.id && well.replicate === 1,
+    );
+    assert.ok(firstReplicate);
+    assert.equal(firstReplicate.row, index % 8);
+    assert.equal(firstReplicate.column, Math.floor(index / 8) * 4);
+  });
+});
+
 test("384-well interleaved loading fills samples vertically by pass before moving right", () => {
   const samples = Array.from({ length: 18 }, (_, index) => ({
     id: `u${index + 1}`,

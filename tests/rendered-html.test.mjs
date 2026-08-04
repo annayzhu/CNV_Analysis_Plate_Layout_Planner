@@ -25,6 +25,7 @@ test("server-renders the CNV planner shell", async () => {
   assert.match(html, /请先完成左侧实验设置/);
   assert.match(html, /加样方式/);
   assert.match(html, /八道排枪直接上样/);
+  assert.match(html, /A–H 纵向 · 复孔向右/);
   assert.match(html, /反应体系与用量/);
   assert.match(html, /class="layout-workbench"/);
   assert.match(html, /class="reaction-column"/);
@@ -54,6 +55,9 @@ test("keeps instrument-copy guidance beside the plate actions", async () => {
   assert.match(source, /第 1 轮 A\/C\/E\/G\/I\/K\/M\/O/);
   assert.match(source, /className="loading-route-guide"/);
   assert.match(source, /row-route-marker/);
+  assert.match(source, /每组 8 个样本纵向排列；复孔向右连续/);
+  assert.match(source, /version: 3/);
+  assert.match(source, /migrateVerticalLoading/);
   assert.match(source, /defaultLoadingPattern\(type\)/);
   assert.match(source, /setLayoutPreset\("assay-major"\)/);
   assert.equal(

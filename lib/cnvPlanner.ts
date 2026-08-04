@@ -229,40 +229,25 @@ function assignUnit(
 }
 
 class PlateCursor {
-  private rowPointer = 0;
-  private column = 0;
   private slotPointer = 0;
 
   constructor(
     private readonly rowOrder: number[],
     private readonly columns: number,
-    private readonly verticalFirst: boolean,
   ) {}
 
   next(replicates: number) {
     if (replicates > this.columns) return null;
-    if (this.verticalFirst) {
-      const columnBlocks = Math.floor(this.columns / replicates);
-      const capacity = this.rowOrder.length * columnBlocks;
-      if (this.slotPointer >= capacity) return null;
-      const rowIndex = this.slotPointer % this.rowOrder.length;
-      const columnBlock = Math.floor(this.slotPointer / this.rowOrder.length);
-      this.slotPointer += 1;
-      return {
-        row: this.rowOrder[rowIndex],
-        column: columnBlock * replicates,
-      };
-    }
-    while (this.rowPointer < this.rowOrder.length) {
-      if (this.column + replicates <= this.columns) {
-        const result = { row: this.rowOrder[this.rowPointer], column: this.column };
-        this.column += replicates;
-        return result;
-      }
-      this.rowPointer += 1;
-      this.column = 0;
-    }
-    return null;
+    const columnBlocks = Math.floor(this.columns / replicates);
+    const capacity = this.rowOrder.length * columnBlocks;
+    if (this.slotPointer >= capacity) return null;
+    const rowIndex = this.slotPointer % this.rowOrder.length;
+    const columnBlock = Math.floor(this.slotPointer / this.rowOrder.length);
+    this.slotPointer += 1;
+    return {
+      row: this.rowOrder[rowIndex],
+      column: columnBlock * replicates,
+    };
   }
 }
 
@@ -297,15 +282,12 @@ export function planCnvLayout(input: PlanInput): PlanResult {
   const unknownUnits = orderedUnits(unknowns, reactionSets, input.layoutPreset);
   const rowOrder = orderedRows(input);
   const { columns } = getPlateDimensions(input.plateType);
-  const verticalFirst =
-    input.plateType === 384 &&
-    input.loadingPattern === "interleaved-8-channel";
   const plates: PlannerPlate[] = [];
   let unknownIndex = 0;
 
   do {
     const plate = createEmptyPlate(plates.length + 1, input.plateType);
-    const cursor = new PlateCursor(rowOrder, columns, verticalFirst);
+    const cursor = new PlateCursor(rowOrder, columns);
 
     for (const unit of controlUnits) {
       const slot = cursor.next(input.replicates);

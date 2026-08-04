@@ -59,7 +59,7 @@ type Language = "zh" | "en";
 const LEGACY_PRESET_ASSAY_IDS = new Set(["Ho_33001161_cn", "Ho_33001153_cn", "Ho_00021109_cn"]);
 
 interface StoredState {
-  version: 2;
+  version: 3;
   language?: Language;
   plateType: PlateType;
   assayMode: AssayMode;
@@ -74,6 +74,7 @@ interface StoredState {
   savedAt: string;
 }
 
+type StoredStateV2 = Omit<StoredState, "version"> & { version: 2 };
 type StoredStateV1 = Omit<StoredState, "version"> & { version: 1 };
 
 const SAMPLE_TYPES: SampleType[] = [
@@ -212,8 +213,8 @@ export function CnvPlanner() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
-        const stored = JSON.parse(raw) as StoredState | StoredStateV1;
-        if (stored.version !== 1 && stored.version !== 2) return;
+        const stored = JSON.parse(raw) as StoredState | StoredStateV2 | StoredStateV1;
+        if (stored.version !== 1 && stored.version !== 2 && stored.version !== 3) return;
         const migrateLegacy384 =
           stored.version === 1 &&
           stored.plateType === 384 &&
@@ -234,8 +235,9 @@ export function CnvPlanner() {
         const restoredReference = LEGACY_PRESET_ASSAY_IDS.has(stored.reference.assayId)
           ? { ...stored.reference, assayId: "" }
           : stored.reference;
+        const migrateVerticalLoading = stored.version < 3 && Boolean(stored.plan);
         let restoredPlan = stored.plan;
-        if (migrateLegacy384) {
+        if (migrateLegacy384 || migrateVerticalLoading) {
           try {
             restoredPlan = planCnvLayout({
               plateType: stored.plateType,
@@ -263,12 +265,16 @@ export function CnvPlanner() {
         setReactionSystem(stored.reactionSystem);
         setPlan(restoredPlan);
         setSavedAt(stored.savedAt);
-        if (migrateLegacy384) {
+        if (migrateLegacy384 || migrateVerticalLoading) {
           setIsDirty(true);
           setToast(
-            stored.language === "en"
-              ? "Updated the saved 384-well layout to the recommended 9 mm interleaved loading route."
-              : "已将保存的 384 孔布局更新为推荐的 9 mm 八道隔行路径。",
+            migrateLegacy384
+              ? stored.language === "en"
+                ? "Updated the saved 384-well layout to the recommended 9 mm interleaved loading route."
+                : "已将保存的 384 孔布局更新为推荐的 9 mm 八道隔行路径。"
+              : stored.language === "en"
+                ? "Updated the saved plate to vertical 8-channel loading with contiguous replicates to the right."
+                : "已将保存的孔板更新为八道纵向上样，复孔向右连续。",
           );
         }
       } catch {
@@ -345,7 +351,7 @@ export function CnvPlanner() {
 
   function saveState() {
     const stored: StoredState = {
-      version: 2,
+      version: 3,
       language,
       plateType,
       assayMode,
@@ -522,7 +528,7 @@ export function CnvPlanner() {
                 {plateType === 96 ? (
                   <div className="loading-pattern-option selected is-static">
                     <span className="loading-pattern-radio" aria-hidden="true" />
-                    <span><strong>{tr("八道排枪直接上样", "Direct 8-channel loading")}</strong><small>{tr("固定 9 mm", "Fixed 9 mm")}</small></span>
+                    <span><strong>{tr("八道排枪直接上样", "Direct 8-channel loading")}</strong><small>{tr("A–H 纵向 · 复孔向右", "A–H vertical · replicates right")}</small></span>
                   </div>
                 ) : (
                   <div className="loading-pattern-options" role="radiogroup" aria-label={tr("选择 384 孔加样方式", "Choose the 384-well loading method")}>
@@ -651,6 +657,14 @@ export function CnvPlanner() {
                       <span className="loading-route-pass pass-one"><b aria-hidden="true">①</b><span>{tr("第 1 轮", "Pass 1")} · A/C/E/G/I/K/M/O</span></span>
                       <span className="loading-route-pass pass-two"><b aria-hidden="true">②</b><span>{tr("第 2 轮", "Pass 2")} · B/D/F/H/J/L/N/P</span></span>
                       <span className="loading-route-note">{tr("板图按真实 A–P 行显示", "Plate remains in physical A–P order")}</span>
+                    </div>
+                  )}
+
+                  {plan.input.plateType === 96 && (
+                    <div className="loading-route-guide" aria-label={tr("96 孔八道排枪上样方向", "96-well 8-channel loading direction")}>
+                      <span className="loading-route-guide-title">{tr("上样方向", "Loading direction")}</span>
+                      <span className="loading-route-pass pass-one"><b aria-hidden="true">↓</b><span>A → H</span></span>
+                      <span className="loading-route-note">{tr("每组 8 个样本纵向排列；复孔向右连续", "Eight samples fill vertically per group; replicates remain contiguous to the right")}</span>
                     </div>
                   )}
 
