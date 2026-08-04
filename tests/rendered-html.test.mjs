@@ -49,13 +49,17 @@ test("keeps instrument-copy guidance beside the plate actions", async () => {
   assert.match(source, /复制无表头/);
   assert.match(source, /两者都用于将当前板的样本列表直接粘贴到 QuantStudio\/SDS/);
   assert.doesNotMatch(source, /仪器样本列表预览|Instrument sample-list preview/);
-  assert.match(source, /连续行序 A–P/);
+  assert.match(source, /连续孔位上样/);
   assert.match(source, /9 mm 八道隔行/);
-  assert.match(source, /9 mm 八道隔行分 A\/C\/E\/G\/I\/K\/M\/O/);
+  assert.match(source, /第 1 轮 A\/C\/E\/G\/I\/K\/M\/O/);
+  assert.match(source, /className="loading-route-guide"/);
+  assert.match(source, /row-route-marker/);
+  assert.match(source, /defaultLoadingPattern\(type\)/);
+  assert.match(source, /setLayoutPreset\("assay-major"\)/);
   assert.equal(
     source.match(/exportAllPlates\(plan, reactionSystem\)/g)?.length,
     1,
   );
-  assert.match(css, /\.field-row select, \.field-row select option \{ font-size: 12px;/);
+  assert.match(css, /\.loading-pattern-option strong \{[^}]*font-size: 11px;/);
   assert.match(source, /className="card reaction-card reaction-panel"/);
 });

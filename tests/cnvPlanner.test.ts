@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  defaultLoadingPattern,
   formatWellId,
   findDuplicateReporters,
+  INTERLEAVED_384_ROW_ORDER,
   planCnvLayout,
   validatePlan,
   type PlanInput,
@@ -91,6 +93,42 @@ test("384-well instrument IDs match the supplied template convention", () => {
   assert.equal(formatWellId(7, 11, 96), "H12");
   assert.equal(formatWellId(0, 0, 384), "A1");
   assert.equal(formatWellId(15, 23, 384), "P24");
+});
+
+test("384-well defaults to the 9 mm interleaved loading route", () => {
+  assert.equal(defaultLoadingPattern(96), "sequential");
+  assert.equal(defaultLoadingPattern(384), "interleaved-8-channel");
+});
+
+test("384-well interleaved loading fills samples vertically by pass before moving right", () => {
+  const samples = Array.from({ length: 18 }, (_, index) => ({
+    id: `u${index + 1}`,
+    name: `U${index + 1}`,
+    type: "unknown" as const,
+  }));
+  const plan = planCnvLayout(baseInput({
+    plateType: 384,
+    samples,
+    layoutPreset: "assay-major",
+    loadingPattern: "interleaved-8-channel",
+    replicates: 4,
+  }));
+  const plate = plan.plates[0];
+
+  samples.forEach((sample, index) => {
+    const firstReplicate = plate.wells.find(
+      (well) => well.sampleId === sample.id && well.replicate === 1,
+    );
+    assert.ok(firstReplicate);
+    assert.equal(
+      firstReplicate.row,
+      INTERLEAVED_384_ROW_ORDER[index % INTERLEAVED_384_ROW_ORDER.length],
+    );
+    assert.equal(
+      firstReplicate.column,
+      Math.floor(index / INTERLEAVED_384_ROW_ORDER.length) * 4,
+    );
+  });
 });
 
 test("multiplex rejects duplicate reporter channels", () => {

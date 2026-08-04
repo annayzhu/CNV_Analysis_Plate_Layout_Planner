@@ -22,6 +22,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   buildReactionSets,
+  defaultLoadingPattern,
   findDuplicateReporters,
   formatWellId,
   getPlateDimensions,
@@ -58,7 +59,7 @@ type Language = "zh" | "en";
 const LEGACY_PRESET_ASSAY_IDS = new Set(["Ho_33001161_cn", "Ho_33001153_cn", "Ho_00021109_cn"]);
 
 interface StoredState {
-  version: 1;
+  version: 2;
   language?: Language;
   plateType: PlateType;
   assayMode: AssayMode;
@@ -72,6 +73,8 @@ interface StoredState {
   plan: PlanResult | null;
   savedAt: string;
 }
+
+type StoredStateV1 = Omit<StoredState, "version"> & { version: 1 };
 
 const SAMPLE_TYPES: SampleType[] = [
   "unknown",
@@ -194,20 +197,65 @@ export function CnvPlanner() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
-        const stored = JSON.parse(raw) as StoredState;
-        if (stored.version !== 1) return;
+        const stored = JSON.parse(raw) as StoredState | StoredStateV1;
+        if (stored.version !== 1 && stored.version !== 2) return;
+        const migrateLegacy384 =
+          stored.version === 1 &&
+          stored.plateType === 384 &&
+          stored.loadingPattern === "sequential";
+        const restoredLoadingPattern = migrateLegacy384
+          ? "interleaved-8-channel"
+          : stored.plateType === 96
+            ? "sequential"
+            : stored.loadingPattern;
+        const restoredLayoutPreset = migrateLegacy384
+          ? "assay-major"
+          : stored.layoutPreset;
+        const restoredTargets = stored.targets.map((target) =>
+          LEGACY_PRESET_ASSAY_IDS.has(target.assayId)
+            ? { ...target, assayId: "" }
+            : target,
+        );
+        const restoredReference = LEGACY_PRESET_ASSAY_IDS.has(stored.reference.assayId)
+          ? { ...stored.reference, assayId: "" }
+          : stored.reference;
+        let restoredPlan = stored.plan;
+        if (migrateLegacy384) {
+          try {
+            restoredPlan = planCnvLayout({
+              plateType: stored.plateType,
+              assayMode: stored.assayMode,
+              samples: stored.samples,
+              targets: restoredTargets,
+              reference: restoredReference,
+              replicates: stored.replicates,
+              layoutPreset: restoredLayoutPreset,
+              loadingPattern: restoredLoadingPattern,
+            });
+          } catch {
+            restoredPlan = null;
+          }
+        }
         setLanguage(stored.language ?? "zh");
         setPlateType(stored.plateType);
         setAssayMode(stored.assayMode);
         setSamples(stored.samples);
-        setTargets(stored.targets.map((target) => LEGACY_PRESET_ASSAY_IDS.has(target.assayId) ? { ...target, assayId: "" } : target));
-        setReference(LEGACY_PRESET_ASSAY_IDS.has(stored.reference.assayId) ? { ...stored.reference, assayId: "" } : stored.reference);
+        setTargets(restoredTargets);
+        setReference(restoredReference);
         setReplicates(stored.replicates);
-        setLayoutPreset(stored.layoutPreset);
-        setLoadingPattern(stored.plateType === 96 ? "sequential" : stored.loadingPattern);
+        setLayoutPreset(restoredLayoutPreset);
+        setLoadingPattern(restoredLoadingPattern);
         setReactionSystem(stored.reactionSystem);
-        setPlan(stored.plan);
+        setPlan(restoredPlan);
         setSavedAt(stored.savedAt);
+        if (migrateLegacy384) {
+          setIsDirty(true);
+          setToast(
+            stored.language === "en"
+              ? "Updated the saved 384-well layout to the recommended 9 mm interleaved loading route."
+              : "已将保存的 384 孔布局更新为推荐的 9 mm 八道隔行路径。",
+          );
+        }
       } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
@@ -221,6 +269,19 @@ export function CnvPlanner() {
 
   function markDirty() {
     setIsDirty(true);
+  }
+
+  function chooseLoadingPattern(nextPattern: LoadingPattern) {
+    if (nextPattern === loadingPattern) return;
+    setLoadingPattern(nextPattern);
+    if (nextPattern === "interleaved-8-channel") {
+      setLayoutPreset("assay-major");
+      setToast(tr("已切换为推荐的隔行上样，并采用按反应组排列。", "Switched to the recommended interleaved route with reaction-set-major layout."));
+    }
+    setPlan(null);
+    setActivePlate(0);
+    setSelectedWell(null);
+    markDirty();
   }
 
   function updateSample(index: number, patch: Partial<SampleInput>) {
@@ -269,7 +330,7 @@ export function CnvPlanner() {
 
   function saveState() {
     const stored: StoredState = {
-      version: 1,
+      version: 2,
       language,
       plateType,
       assayMode,
@@ -369,6 +430,11 @@ export function CnvPlanner() {
   const plate = plan?.plates[activePlate] ?? null;
   const dimensions = getPlateDimensions(plateType);
   const selected = plate?.wells.find((well) => well.id === selectedWell) ?? null;
+  const planUsesInterleaved = Boolean(
+    plan &&
+    plan.input.plateType === 384 &&
+    plan.input.loadingPattern === "interleaved-8-channel",
+  );
   const errorCount = issues.filter((issue) => issue.severity === "error").length + reactionErrors.length;
   const warningCount = issues.filter((issue) => issue.severity === "warning").length;
 
@@ -404,7 +470,17 @@ export function CnvPlanner() {
               <div className="plate-picker">
                 {([96, 384] as const).map((type) => {
                   const size = getPlateDimensions(type);
-                  return <button key={type} className={`plate-choice ${plateType === type ? "selected" : ""}`} onClick={() => { setPlateType(type); if (type === 96) setLoadingPattern("sequential"); markDirty(); }}>
+                  return <button key={type} className={`plate-choice ${plateType === type ? "selected" : ""}`} onClick={() => {
+                    if (type === plateType) return;
+                    const nextLoadingPattern = defaultLoadingPattern(type);
+                    setPlateType(type);
+                    setLoadingPattern(nextLoadingPattern);
+                    if (nextLoadingPattern === "interleaved-8-channel") setLayoutPreset("assay-major");
+                    setPlan(null);
+                    setActivePlate(0);
+                    setSelectedWell(null);
+                    markDirty();
+                  }}>
                     <span><span className="plate-choice-name">{tr(`${type} 孔板`, `${type}-well plate`)}</span><span className="plate-choice-meta">{tr(`${size.rows} 行 × ${size.columns} 列`, `${size.rows} rows × ${size.columns} columns`)}</span></span>
                     <span className="plate-mini" aria-hidden="true">{Array.from({ length: 12 }).map((_, index) => <span key={index} />)}</span>
                   </button>;
@@ -419,12 +495,34 @@ export function CnvPlanner() {
                   <strong>Multiplex</strong><span>{tr("多个 target + reference 同孔", "Multiple targets and the reference share one well")}</span>
                 </button>
               </div>
-              <div className="field-row three">
+              <div className="field-row two">
                 <label><span>{tr("复孔", "Replicates")}</span><input type="number" min={1} max={8} value={replicates} onChange={(event) => { setReplicates(Number(event.target.value)); markDirty(); }} /></label>
                 <label><span>{tr("排序", "Layout")}</span><select value={layoutPreset} onChange={(event) => { setLayoutPreset(event.target.value as LayoutPreset); markDirty(); }}><option value="sample-major">{tr("按样本", "By sample")}</option><option value="assay-major">{tr("按反应组", "By reaction set")}</option></select></label>
-                <label><span>{tr("加样方式", "Loading method")}</span><select value={loadingPattern} disabled={plateType === 96} onChange={(event) => { setLoadingPattern(event.target.value as LoadingPattern); markDirty(); }}><option value="sequential">{plateType === 96 ? tr("八道排枪直接上样", "Direct 8-channel loading") : tr("连续行序 A–P", "Sequential rows A–P")}</option><option value="interleaved-8-channel">{tr("9 mm 八道隔行", "9 mm interleaved 8-channel")}</option></select></label>
               </div>
-              {plateType === 384 && <p className="loading-pattern-note">{tr("连续行序按 A→P；9 mm 八道隔行分 A/C/E/G/I/K/M/O 与 B/D/F/H/J/L/N/P 两轮。", "Sequential follows A→P; 9 mm interleaved uses A/C/E/G/I/K/M/O and B/D/F/H/J/L/N/P in two passes.")}</p>}
+              <div className="loading-pattern-control">
+                <div className="loading-pattern-heading">
+                  <span>{tr("加样方式", "Loading method")}</span>
+                  <small>{tr("物理孔位路径", "Physical well path")}</small>
+                </div>
+                {plateType === 96 ? (
+                  <div className="loading-pattern-option selected fixed">
+                    <span className="loading-pattern-radio" aria-hidden="true" />
+                    <span><strong>{tr("八道排枪直接上样", "Direct 8-channel loading")}</strong><small>{tr("固定 9 mm", "Fixed 9 mm")}</small></span>
+                  </div>
+                ) : (
+                  <div className="loading-pattern-options" role="radiogroup" aria-label={tr("选择 384 孔加样方式", "Choose the 384-well loading method")}>
+                    <button className={`loading-pattern-option ${loadingPattern === "interleaved-8-channel" ? "selected" : ""}`} type="button" role="radio" aria-checked={loadingPattern === "interleaved-8-channel"} onClick={() => chooseLoadingPattern("interleaved-8-channel")}>
+                      <span className="loading-pattern-radio" aria-hidden="true" />
+                      <span><strong>{tr("9 mm 八道隔行", "9 mm interleaved 8-channel")}</strong><small>{tr("两轮 · 推荐", "Two passes · Recommended")}</small></span>
+                    </button>
+                    <button className={`loading-pattern-option ${loadingPattern === "sequential" ? "selected" : ""}`} type="button" role="radio" aria-checked={loadingPattern === "sequential"} onClick={() => chooseLoadingPattern("sequential")}>
+                      <span className="loading-pattern-radio" aria-hidden="true" />
+                      <span><strong>{tr("连续孔位上样", "Sequential well loading")}</strong><small>{tr("4.5 mm / 自动化 / 单道", "4.5 mm / automation / single-channel")}</small></span>
+                    </button>
+                  </div>
+                )}
+                {plateType === 384 && loadingPattern === "interleaved-8-channel" && <p className="loading-pattern-note">{tr("第 1 轮 A/C/E/G/I/K/M/O；第 2 轮 B/D/F/H/J/L/N/P。样本沿隔行路径纵向排列。", "Pass 1 uses A/C/E/G/I/K/M/O; pass 2 uses B/D/F/H/J/L/N/P. Samples fill vertically along the interleaved route.")}</p>}
+              </div>
               {replicates < 4 && <p className="micro-warning">{tr("官方 CNV 指南建议 4 个复孔；当前设置适合作为方法开发条件，需谨慎判读。", "The official CNV guide recommends four replicates; use fewer replicates only for carefully reviewed method development.")}</p>}
             </section>
 
@@ -532,13 +630,25 @@ export function CnvPlanner() {
                     ))}
                   </div>
 
+                  {planUsesInterleaved && (
+                    <div className="loading-route-guide" aria-label={tr("八道排枪隔行上样路径", "Interleaved 8-channel loading route")}>
+                      <span className="loading-route-guide-title">{tr("上样路径", "Loading route")}</span>
+                      <span className="loading-route-pass pass-one"><b aria-hidden="true">①</b><span>{tr("第 1 轮", "Pass 1")} · A/C/E/G/I/K/M/O</span></span>
+                      <span className="loading-route-pass pass-two"><b aria-hidden="true">②</b><span>{tr("第 2 轮", "Pass 2")} · B/D/F/H/J/L/N/P</span></span>
+                      <span className="loading-route-note">{tr("板图按真实 A–P 行显示", "Plate remains in physical A–P order")}</span>
+                    </div>
+                  )}
+
                   <div className={`plate-scroll plate-${plateType}`}>
                     <div className="plate-grid" style={{ gridTemplateColumns: `38px repeat(${dimensions.columns}, minmax(${plateType === 96 ? 70 : 48}px, 1fr))` }}>
                       <div className="corner-cell" />
                       {Array.from({ length: dimensions.columns }, (_, index) => <div className="column-header" key={`column-${index}`}>{index + 1}</div>)}
                       {Array.from({ length: dimensions.rows }, (_, row) => (
                         <div className="plate-row" key={`row-${row}`} style={{ display: "contents" }}>
-                          <div className="row-header">{rowLabel(row)}</div>
+                          <div className={`row-header ${planUsesInterleaved ? "with-route" : ""}`}>
+                            <span>{rowLabel(row)}</span>
+                            {planUsesInterleaved && <span className={`row-route-marker ${row % 2 === 0 ? "pass-one" : "pass-two"}`} title={row % 2 === 0 ? tr("第 1 轮上样", "Pass 1") : tr("第 2 轮上样", "Pass 2")} aria-label={row % 2 === 0 ? tr("第 1 轮上样", "Pass 1") : tr("第 2 轮上样", "Pass 2")}>{row % 2 === 0 ? "①" : "②"}</span>}
+                          </div>
                           {Array.from({ length: dimensions.columns }, (_, column) => {
                             const well = plate.wells.find((candidate) => candidate.row === row && candidate.column === column)!;
                             return (

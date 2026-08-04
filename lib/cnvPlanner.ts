@@ -86,6 +86,14 @@ export interface ValidationIssue {
   wellId?: string;
 }
 
+export const INTERLEAVED_384_ROW_ORDER = [
+  0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15,
+] as const;
+
+export function defaultLoadingPattern(plateType: PlateType): LoadingPattern {
+  return plateType === 384 ? "interleaved-8-channel" : "sequential";
+}
+
 interface Unit {
   sample: SampleInput;
   reactionSet: ReactionSet;
@@ -171,9 +179,7 @@ function createEmptyPlate(plateNumber: number, plateType: PlateType): PlannerPla
 function orderedRows(input: Pick<PlanInput, "plateType" | "loadingPattern">) {
   const { rows } = getPlateDimensions(input.plateType);
   if (input.plateType === 384 && input.loadingPattern === "interleaved-8-channel") {
-    const evenRows = Array.from({ length: rows / 2 }, (_, index) => index * 2);
-    const oddRows = Array.from({ length: rows / 2 }, (_, index) => index * 2 + 1);
-    return [...evenRows, ...oddRows];
+    return [...INTERLEAVED_384_ROW_ORDER];
   }
   return Array.from({ length: rows }, (_, index) => index);
 }
@@ -225,14 +231,28 @@ function assignUnit(
 class PlateCursor {
   private rowPointer = 0;
   private column = 0;
+  private slotPointer = 0;
 
   constructor(
     private readonly rowOrder: number[],
     private readonly columns: number,
+    private readonly verticalFirst: boolean,
   ) {}
 
   next(replicates: number) {
     if (replicates > this.columns) return null;
+    if (this.verticalFirst) {
+      const columnBlocks = Math.floor(this.columns / replicates);
+      const capacity = this.rowOrder.length * columnBlocks;
+      if (this.slotPointer >= capacity) return null;
+      const rowIndex = this.slotPointer % this.rowOrder.length;
+      const columnBlock = Math.floor(this.slotPointer / this.rowOrder.length);
+      this.slotPointer += 1;
+      return {
+        row: this.rowOrder[rowIndex],
+        column: columnBlock * replicates,
+      };
+    }
     while (this.rowPointer < this.rowOrder.length) {
       if (this.column + replicates <= this.columns) {
         const result = { row: this.rowOrder[this.rowPointer], column: this.column };
@@ -277,12 +297,15 @@ export function planCnvLayout(input: PlanInput): PlanResult {
   const unknownUnits = orderedUnits(unknowns, reactionSets, input.layoutPreset);
   const rowOrder = orderedRows(input);
   const { columns } = getPlateDimensions(input.plateType);
+  const verticalFirst =
+    input.plateType === 384 &&
+    input.loadingPattern === "interleaved-8-channel";
   const plates: PlannerPlate[] = [];
   let unknownIndex = 0;
 
   do {
     const plate = createEmptyPlate(plates.length + 1, input.plateType);
-    const cursor = new PlateCursor(rowOrder, columns);
+    const cursor = new PlateCursor(rowOrder, columns, verticalFirst);
 
     for (const unit of controlUnits) {
       const slot = cursor.next(input.replicates);
