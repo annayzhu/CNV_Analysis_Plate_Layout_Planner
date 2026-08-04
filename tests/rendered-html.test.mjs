@@ -61,5 +61,11 @@ test("keeps instrument-copy guidance beside the plate actions", async () => {
     1,
   );
   assert.match(css, /\.loading-pattern-option strong \{[^}]*font-size: 11px;/);
+  assert.match(source, /loading-pattern-option selected is-static/);
+  assert.doesNotMatch(source, /loading-pattern-option selected fixed/);
+  assert.match(css, /\.control-column, \.result-column \{[^}]*align-content: start;/);
+  assert.match(css, /\.plate-grid\.plate-96 \{[^}]*repeat\(12, var\(--well-size\)\)/);
+  assert.match(css, /\.plate-grid\.plate-384 \{[^}]*--well-size: 32px;[^}]*repeat\(24, var\(--well-size\)\)/);
+  assert.match(css, /@container \(max-width: 820px\)/);
   assert.match(source, /className="card reaction-card reaction-panel"/);
 });

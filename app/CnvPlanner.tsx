@@ -137,6 +137,21 @@ function sampleTone(type: SampleType | "") {
   return "unknown";
 }
 
+function shortLabel(value: string, maximum: number) {
+  const normalized = value.trim();
+  if (normalized.length <= maximum) return normalized;
+  return `${normalized.slice(0, Math.max(1, maximum - 1))}…`;
+}
+
+function wellSampleLabel(sample: string, type: SampleType, compact: boolean) {
+  if (type === "ntc") return "NTC";
+  if (type === "calibrator") return compact ? "CAL" : shortLabel(sample, 8);
+  if (type.startsWith("qc-")) return `QC${type.slice(3)}`;
+  const numberedUnknown = sample.match(/^unknown[\s_-]*(\d+)$/i);
+  if (numberedUnknown) return `U${numberedUnknown[1].slice(compact ? -3 : -5)}`;
+  return shortLabel(sample, compact ? 4 : 8);
+}
+
 function copyText(text: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
   const textarea = document.createElement("textarea");
@@ -505,7 +520,7 @@ export function CnvPlanner() {
                   <small>{tr("物理孔位路径", "Physical well path")}</small>
                 </div>
                 {plateType === 96 ? (
-                  <div className="loading-pattern-option selected fixed">
+                  <div className="loading-pattern-option selected is-static">
                     <span className="loading-pattern-radio" aria-hidden="true" />
                     <span><strong>{tr("八道排枪直接上样", "Direct 8-channel loading")}</strong><small>{tr("固定 9 mm", "Fixed 9 mm")}</small></span>
                   </div>
@@ -640,7 +655,7 @@ export function CnvPlanner() {
                   )}
 
                   <div className={`plate-scroll plate-${plateType}`}>
-                    <div className="plate-grid" style={{ gridTemplateColumns: `38px repeat(${dimensions.columns}, minmax(${plateType === 96 ? 70 : 48}px, 1fr))` }}>
+                    <div className={`plate-grid plate-${plateType}`}>
                       <div className="corner-cell" />
                       {Array.from({ length: dimensions.columns }, (_, index) => <div className="column-header" key={`column-${index}`}>{index + 1}</div>)}
                       {Array.from({ length: dimensions.rows }, (_, row) => (
@@ -659,7 +674,7 @@ export function CnvPlanner() {
                                 title={well.sample ? `${well.id} · ${well.sample} · ${well.reactionSet} · R${well.replicate}` : well.id}
                               >
                                 <span className="well-id">{formatWellId(row, column, plateType)}</span>
-                                {well.sample && <><strong>{well.sample}</strong><small>{well.targets.join("+")} · R{well.replicate}</small></>}
+                                {well.sample && <span className="well-content"><strong>{wellSampleLabel(well.sample, well.sampleType, plateType === 384)}</strong><small>{shortLabel(well.reactionSet || well.targets.join("+"), plateType === 384 ? 5 : 9)} · R{well.replicate}</small></span>}
                               </button>
                             );
                           })}
