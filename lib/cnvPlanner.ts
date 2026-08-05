@@ -393,7 +393,7 @@ export function validatePlan(plan: PlanResult): ValidationIssue[] {
     issues.push({
       severity: "warning",
       code: "no-calibrator",
-      message: "未设置已知拷贝数校准样本；无法完成标准 ΔΔCt CN 计算。",
+      message: "未设置已知拷贝数校准样本。",
     });
   }
   if (!controls.some((sample) => sample.type === "ntc")) {

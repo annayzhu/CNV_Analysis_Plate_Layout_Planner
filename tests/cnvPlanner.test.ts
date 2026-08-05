@@ -88,6 +88,20 @@ test("controls are repeated on every plate", () => {
   assert.equal(validatePlan(plan).filter((issue) => issue.severity === "error").length, 0);
 });
 
+test("2-copy QC remains distinct from an analysis calibrator and only triggers a neutral reminder", () => {
+  const plan = planCnvLayout(baseInput({
+    samples: [
+      { id: "u1", name: "U1", type: "unknown" },
+      { id: "qc2", name: "QC_2copy", type: "qc-2" },
+      { id: "ntc", name: "NTC", type: "ntc" },
+    ],
+  }));
+  const issue = validatePlan(plan).find((candidate) => candidate.code === "no-calibrator");
+  assert.equal(issue?.severity, "warning");
+  assert.equal(issue?.message, "未设置已知拷贝数校准样本。");
+  assert.doesNotMatch(issue?.message ?? "", /无法完成|ΔΔCt/);
+});
+
 test("384-well instrument IDs match the supplied template convention", () => {
   assert.equal(formatWellId(0, 0, 96), "A01");
   assert.equal(formatWellId(7, 11, 96), "H12");
