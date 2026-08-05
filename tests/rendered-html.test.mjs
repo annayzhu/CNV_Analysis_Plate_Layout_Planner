@@ -54,6 +54,9 @@ test("keeps instrument-copy guidance beside the plate actions", async () => {
   assert.match(source, /复制无表头/);
   assert.match(source, /适用于QS1\/QS3\/QS5\/QS6\/QS7\/QSDX\/ViiA7机型的软件/);
   assert.match(source, /适用于7300 Plus\/7500\/7500 Fast\/StepOnePlus机型的软件（V2\.X版本以上）/);
+  assert.match(source, /className="copy-tooltip copy-tooltip-start"/);
+  assert.match(source, /className="copy-tooltip-content"/);
+  assert.match(source, /role="tooltip"/);
   assert.match(source, /两者都用于将当前板的样本列表直接粘贴到 QuantStudio\/SDS/);
   assert.doesNotMatch(source, /仪器样本列表预览|Instrument sample-list preview/);
   assert.match(source, /连续孔位上样/);
@@ -82,6 +85,8 @@ test("keeps instrument-copy guidance beside the plate actions", async () => {
   assert.match(css, /\.loading-pattern-option strong \{[^}]*font-size: 11px;/);
   assert.match(css, /\.ghost-plate \{[^}]*repeat\(12, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.section-heading-action \{/);
+  assert.match(css, /\.copy-tooltip:hover \.copy-tooltip-content/);
+  assert.match(css, /\.copy-tooltip:focus-within \.copy-tooltip-content/);
   assert.match(source, /loading-pattern-option selected is-static/);
   assert.doesNotMatch(source, /loading-pattern-option selected fixed/);
   assert.match(css, /\.control-column, \.result-column \{[^}]*align-content: start;/);

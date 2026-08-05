@@ -250,6 +250,9 @@ input:hover, textarea:hover, select:hover { border-color: var(--border-strong); 
 .plate-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .plate-card .plate-toolbar { align-items: flex-start; flex-wrap: wrap; }
 .plate-card .plate-actions { flex-wrap: wrap; justify-content: flex-end; }
+.copy-tooltip { position: relative; display: inline-flex; }
+.copy-tooltip-content { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; visibility: hidden; width: max-content; max-width: 330px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.14); border-radius: 9px; background: var(--navy-dark); box-shadow: 0 10px 26px rgba(28,30,26,.2); color: white; font-size: 10px; font-weight: 520; line-height: 1.45; opacity: 0; pointer-events: none; text-align: left; transform: translateY(-4px); transition: opacity 130ms ease, transform 130ms ease, visibility 130ms ease; }
+.copy-tooltip:hover .copy-tooltip-content, .copy-tooltip:focus-within .copy-tooltip-content { visibility: visible; opacity: 1; transform: translateY(0); }
 .copy-helper { display: flex; align-items: flex-start; gap: 5px; margin: -5px 0 12px; color: var(--muted); font-size: 9px; line-height: 1.45; }
 .copy-helper svg { flex: 0 0 auto; margin-top: 1px; }
 .plate-tabs { display: flex; gap: 6px; margin: 0 -2px 12px; overflow-x: auto; padding: 2px; }
@@ -379,6 +382,10 @@ footer { display: flex; justify-content: space-between; gap: 20px; padding: 16px
   .plate-toolbar { align-items: flex-start; flex-direction: column; }
   .plate-actions { width: 100%; flex-wrap: wrap; }
   .plate-actions .button { flex: 1 1 auto; }
+  .plate-actions .copy-tooltip { flex: 1 1 auto; }
+  .copy-tooltip .button { width: 100%; }
+  .copy-tooltip-start .copy-tooltip-content { right: auto; left: 0; }
+  .copy-tooltip-content { width: min(330px, calc(100vw - 48px)); }
   .field-row.three { grid-template-columns: 1fr; }
   .assay-header { display: none; }
   .assay-row { grid-template-columns: 1fr 1fr 70px 58px 36px; }
