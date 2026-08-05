@@ -733,8 +733,8 @@ export function CnvPlanner() {
                       <h3>{plate.name}</h3>
                     </div>
                     <div className="plate-actions">
-                      <button className="button" onClick={() => handleCopy(true)}><Clipboard size={15} />{tr("复制含表头", "Copy with headers")}</button>
-                      <button className="button" onClick={() => handleCopy(false)}><Clipboard size={15} />{tr("复制无表头", "Copy without headers")}</button>
+                      <button className="button" title={tr("适用于QS1/QS3/QS5/QS6/QS7/QSDX/ViiA7机型的软件", "For software used with QS1/QS3/QS5/QS6/QS7/QSDX/ViiA7 instruments")} onClick={() => handleCopy(true)}><Clipboard size={15} />{tr("复制含表头", "Copy with headers")}</button>
+                      <button className="button" title={tr("适用于7300 Plus/7500/7500 Fast/StepOnePlus机型的软件（V2.X版本以上）", "For software used with 7300 Plus/7500/7500 Fast/StepOnePlus instruments (version 2.X or later)")} onClick={() => handleCopy(false)}><Clipboard size={15} />{tr("复制无表头", "Copy without headers")}</button>
                       <button className="button" onClick={() => exportOnePlate(plan, plate, reactionSystem)}><FileSpreadsheet size={15} />{tr("本板 Excel", "Plate Excel")}</button>
                     </div>
                   </div>
